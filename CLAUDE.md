@@ -5,9 +5,10 @@ CLI tool that uses an LLM agent to archive web content into clean markdown.
 ## Build & Test
 
 ```bash
+go mod tidy
 go build -o agent-archiver .
-go test ./...
-go vet ./...
+go test -race -v ./...
+golangci-lint run
 ```
 
 ## Architecture

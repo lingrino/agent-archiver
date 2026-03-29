@@ -55,7 +55,7 @@ func (t *HTTPFetch) Execute(ctx context.Context, input json.RawMessage) (string,
 	if err != nil {
 		return "", fmt.Errorf("fetching %s: %w", params.URL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("HTTP %d for %s", resp.StatusCode, params.URL)

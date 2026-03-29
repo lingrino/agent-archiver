@@ -221,7 +221,7 @@ func tryDownload(ctx context.Context, client *http.Client, imgURL string, imageD
 	if err != nil {
 		return "", imgURL, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", imgURL, fmt.Errorf("HTTP %d", resp.StatusCode)
@@ -234,10 +234,10 @@ func tryDownload(ctx context.Context, client *http.Client, imgURL string, imageD
 	if err != nil {
 		return "", imgURL, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if _, err := io.Copy(f, io.LimitReader(resp.Body, 50*1024*1024)); err != nil {
-		os.Remove(outPath)
+		_ = os.Remove(outPath)
 		return "", imgURL, err
 	}
 

@@ -99,7 +99,7 @@ func TestProcessMarkdown(t *testing.T) {
 	imageData := []byte{0x89, 0x50, 0x4e, 0x47} // PNG magic bytes
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
-		w.Write(imageData)
+		_, _ = w.Write(imageData)
 	}))
 	defer srv.Close()
 
