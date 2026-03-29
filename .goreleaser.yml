@@ -1,0 +1,46 @@
+version: 2
+
+project_name: agent-archiver
+
+builds:
+  - id: agent-archiver
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+
+archives:
+  - id: agent-archiver
+    formats: ["zip"]
+
+homebrew_casks:
+  - name: agent-archiver
+    description: export sites to markdown
+    skip_upload: auto
+    repository:
+      owner: lingrino
+      name: homebrew-tap
+    directory: Casks
+    commit_author:
+      name: Sean Lingren
+      email: sean@lingren.com
+
+dockers_v2:
+  - images:
+      - ghcr.io/lingrino/agent-archiver
+    tags:
+      - latest
+      - "{{ .Tag }}"
+    labels:
+      org.opencontainers.image.name: "{{.ProjectName}}"
+      org.opencontainers.image.source: "{{.GitURL}}"
+      org.opencontainers.image.version: "{{.Version}}"
+      org.opencontainers.image.revision: "{{.FullCommit}}"
+      org.opencontainers.image.created: "{{.Date}}"

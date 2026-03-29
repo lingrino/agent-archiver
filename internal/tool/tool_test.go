@@ -15,7 +15,7 @@ type mockTool struct {
 }
 
 func (m *mockTool) Name() string        { return m.name }
-func (m *mockTool) Description() string  { return "mock tool" }
+func (m *mockTool) Description() string { return "mock tool" }
 func (m *mockTool) InputSchema() anthropic.ToolInputSchemaParam {
 	return anthropic.ToolInputSchemaParam{
 		Properties: map[string]interface{}{},

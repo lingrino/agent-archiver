@@ -33,7 +33,7 @@ func callCF(ctx context.Context, client *http.Client, apiToken, accountID, endpo
 	if err != nil {
 		return "", fmt.Errorf("calling Cloudflare %s: %w", endpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB limit
 	if err != nil {
@@ -41,7 +41,7 @@ func callCF(ctx context.Context, client *http.Client, apiToken, accountID, endpo
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Cloudflare %s returned HTTP %d: %s", endpoint, resp.StatusCode, string(body))
+		return "", fmt.Errorf("cloudflare %s returned HTTP %d: %s", endpoint, resp.StatusCode, string(body))
 	}
 
 	return string(body), nil
