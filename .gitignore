@@ -1,0 +1,19 @@
+# Binaries
+agent-archiver
+*.exe
+
+# Archive output
+/archive/
+
+# Environment
+.env
+.envrc
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
