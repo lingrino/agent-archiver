@@ -48,6 +48,7 @@ Fix these issues if present:
 
 Do NOT:
 - Change the meaning or wording of the article content
+- Change capitalization, casing, or spelling of ANY text — preserve the author's exact wording including heading case (e.g., if the original says "foo BAR", keep it exactly as "foo BAR", do not capitalize "foo" to "Foo")
 - Summarize or shorten the article
 - Add any content that was not in the original
 - Remove images — EVERY image from the input must appear in the output with its full original URL intact
