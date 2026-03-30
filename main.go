@@ -84,7 +84,7 @@ func main() {
 				Title:        tweetResult.Title,
 				Author:       tweetResult.Author,
 				Date:         tweetResult.Date,
-				Type:         tweetResult.Type,
+				Type:         archive.ContentType(tweetResult.Type),
 				Summary:      summary,
 				URL:          targetURL,
 				DownloadedAt: time.Now().UTC(),

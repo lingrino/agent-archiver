@@ -106,6 +106,7 @@ func (a *Agent) Archive(ctx context.Context, targetURL string) (*archive.Archive
 			Title:        extractionResult.Title,
 			Author:       extractionResult.Author,
 			Date:         extractionResult.Date,
+			Type:         archive.ContentType(extractionResult.Type),
 			Summary:      extractionResult.Summary,
 			URL:          targetURL,
 			DownloadedAt: time.Now().UTC(),
@@ -120,6 +121,7 @@ type extractionResponse struct {
 	Title      string `json:"title" jsonschema_description:"The article title"`
 	Author     string `json:"author" jsonschema_description:"Author name if found, or empty string"`
 	Date       string `json:"date" jsonschema_description:"Publication date in YYYY-MM-DD format if found, or empty string"`
+	Type       string `json:"type" jsonschema:"enum=article,enum=video,enum=tweet,enum=documentation,enum=discussion,enum=paper,enum=page" jsonschema_description:"The type of content: article (blog posts, news, essays, newsletters), video (YouTube, Vimeo, etc.), tweet (X/Twitter posts), documentation (docs, API references), discussion (forum posts, HN threads), paper (academic papers, whitepapers, RFCs), page (generic web page, landing page)"`
 	Markdown   string `json:"markdown" jsonschema_description:"The full article content as clean markdown"`
 	Summary    string `json:"summary" jsonschema_description:"A concise summary paragraph of 3-8 sentences capturing the key ideas of the content"`
 	Confidence string `json:"confidence" jsonschema:"enum=high,enum=medium,enum=low" jsonschema_description:"Your confidence that the full article was extracted correctly"`
