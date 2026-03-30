@@ -12,10 +12,24 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ContentType represents the type of content being archived.
+type ContentType string
+
+const (
+	TypeArticle       ContentType = "article"
+	TypeVideo         ContentType = "video"
+	TypeTweet         ContentType = "tweet"
+	TypeDocumentation ContentType = "documentation"
+	TypeDiscussion    ContentType = "discussion"
+	TypePaper         ContentType = "paper"
+	TypePage          ContentType = "page"
+)
+
 type Metadata struct {
 	Title        string    `yaml:"title"`
 	Author       string    `yaml:"author,omitempty"`
 	Date         string    `yaml:"date,omitempty"`
+	Type         ContentType `yaml:"type"`
 	Summary      string    `yaml:"summary,omitempty"`
 	URL          string    `yaml:"url"`
 	DownloadedAt time.Time `yaml:"downloaded_at"`

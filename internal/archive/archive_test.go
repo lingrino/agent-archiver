@@ -70,6 +70,7 @@ func TestArchiveWrite(t *testing.T) {
 			Title:        "Test Article",
 			Author:       "Test Author",
 			Date:         "2024-01-15",
+			Type:         TypeArticle,
 			Summary:      "This is a test summary of the article.",
 			URL:          "https://example.com/test",
 			DownloadedAt: time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC),
@@ -99,6 +100,9 @@ func TestArchiveWrite(t *testing.T) {
 	}
 	if !strings.Contains(content, "author: Test Author") {
 		t.Error("missing author in frontmatter")
+	}
+	if !strings.Contains(content, "type: article") {
+		t.Error("missing type in frontmatter")
 	}
 	if !strings.Contains(content, "summary: This is a test summary of the article.") {
 		t.Error("missing summary in frontmatter")
