@@ -58,7 +58,7 @@ func main() {
 		log.Fatalf("archive failed: %v", err)
 	}
 
-	result.Content, err = images.ProcessMarkdown(ctx, result.Content, result.ImageDir(archiveDir))
+	result.Content, err = images.ProcessMarkdown(ctx, result.Content, result.ImageDir(archiveDir), targetURL)
 	if err != nil {
 		log.Fatalf("image processing failed: %v", err)
 	}
