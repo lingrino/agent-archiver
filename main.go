@@ -7,8 +7,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/lingrino/agent-archiver/internal/agent"
+	"github.com/lingrino/agent-archiver/internal/archive"
 	"github.com/lingrino/agent-archiver/internal/config"
 	"github.com/lingrino/agent-archiver/internal/images"
 	"github.com/lingrino/agent-archiver/internal/tool"
@@ -53,29 +55,72 @@ func main() {
 		log.Printf("available tools: %v", registry.Names())
 	}
 
-	result, usage, err := a.Archive(ctx, targetURL)
-	if err != nil {
-		log.Fatalf("archive failed: %v", err)
+	var result *archive.Archive
+
+	// Twitter/X URLs are handled directly — no agent loop needed since the
+	// API returns structured data. This avoids hallucination from the LLM
+	// trying to "extract an article" from a short tweet.
+	if tool.IsTweetURL(targetURL) && cfg.XBearerToken != "" {
+		if cfg.Verbose {
+			log.Printf("detected Twitter/X URL, fetching directly via API")
+		}
+		tw := tool.NewTwitter(cfg.XBearerToken)
+		tw.SetVerbose(cfg.Verbose)
+		tweetResult, fetchErr := tw.Fetch(ctx, targetURL)
+		if fetchErr != nil {
+			log.Fatalf("twitter fetch failed: %v", fetchErr)
+		}
+
+		if cfg.Verbose {
+			log.Printf("generating summary via LLM")
+		}
+		summary, summaryErr := a.Summarize(ctx, tweetResult.Markdown)
+		if summaryErr != nil {
+			log.Fatalf("summary generation failed: %v", summaryErr)
+		}
+
+		result = &archive.Archive{
+			Metadata: archive.Metadata{
+				Title:        tweetResult.Title,
+				Author:       tweetResult.Author,
+				Date:         tweetResult.Date,
+				Type:         archive.ContentType(tweetResult.Type),
+				Summary:      summary,
+				URL:          targetURL,
+				DownloadedAt: time.Now().UTC(),
+			},
+			Content: tweetResult.Markdown,
+			Domain:  archive.DomainFromURL(targetURL),
+			Slug:    archive.SlugFromURL(targetURL),
+		}
+	} else {
+		var usage *agent.Usage
+		var archiveErr error
+		result, usage, archiveErr = a.Archive(ctx, targetURL)
+		if archiveErr != nil {
+			log.Fatalf("archive failed: %v", archiveErr)
+		}
+
+		if cfg.Verbose {
+			log.Printf("tokens: %d input, %d output", usage.InputTokens, usage.OutputTokens)
+			if usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0 {
+				log.Printf("cache: %d read, %d creation", usage.CacheReadInputTokens, usage.CacheCreationInputTokens)
+			}
+			log.Printf("estimated cost: $%.4f", usage.Cost(model))
+		}
 	}
 
-	result.Content, err = images.ProcessMarkdown(ctx, result.Content, result.ImageDir(archiveDir), targetURL)
-	if err != nil {
-		log.Fatalf("image processing failed: %v", err)
+	processedContent, processErr := images.ProcessMarkdown(ctx, result.Content, result.ImageDir(archiveDir), targetURL)
+	if processErr != nil {
+		log.Fatalf("image processing failed: %v", processErr)
 	}
+	result.Content = processedContent
 
-	if err := result.Write(archiveDir); err != nil {
-		log.Fatalf("write failed: %v", err)
+	if writeErr := result.Write(archiveDir); writeErr != nil {
+		log.Fatalf("write failed: %v", writeErr)
 	}
 
 	fmt.Printf("archived to %s\n", result.OutputPath(archiveDir))
-
-	if cfg.Verbose {
-		log.Printf("tokens: %d input, %d output", usage.InputTokens, usage.OutputTokens)
-		if usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0 {
-			log.Printf("cache: %d read, %d creation", usage.CacheReadInputTokens, usage.CacheCreationInputTokens)
-		}
-		log.Printf("estimated cost: $%.4f", usage.Cost(model))
-	}
 }
 
 func buildRegistry(cfg *config.Config) *tool.Registry {
@@ -91,6 +136,10 @@ func buildRegistry(cfg *config.Config) *tool.Registry {
 
 	if cfg.ExaAPIKey != "" {
 		tools = append(tools, tool.NewExaSearch(cfg.ExaAPIKey))
+	}
+
+	if cfg.XBearerToken != "" {
+		tools = append(tools, tool.NewTwitter(cfg.XBearerToken))
 	}
 
 	if tool.TrafilaturaAvailable() {

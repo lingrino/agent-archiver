@@ -6,6 +6,7 @@ You have access to tools that can fetch web content in different ways. Use them 
 1. Start with the most appropriate tool for the URL type
 2. If the first tool's output is incomplete or low quality, try another tool
 3. Compare outputs from different tools if needed to get the best result
+4. For Twitter/X URLs (twitter.com or x.com), ALWAYS use the twitter tool — other tools will not work because Twitter requires authentication
 
 Your goal is to extract ONLY the main content of the page — the article text, headings, images, code blocks, lists, tables, and block quotes. Do NOT include:
 - Navigation menus, headers, or footers
@@ -46,6 +47,17 @@ Guidelines for the summary field:
 - Write in a neutral, informative tone
 
 If you cannot extract the content with reasonable confidence, set confidence to "low" and explain the issue in the markdown field.`
+
+const summarizeSystemPrompt = `You are a concise summarizer. You will receive the text content of one or more social media posts (tweets). Write a brief, neutral summary of 2-5 sentences that captures the key point or argument being made.
+
+Guidelines:
+- Do not simply repeat the text verbatim — distill the core idea
+- Write in a neutral, informative tone
+- If it is a thread, capture the overall arc, not just the first post
+- Do not editorialize or add your own opinion
+- Do not use phrases like "In this tweet" or "The author says" — just state the idea directly
+
+Return ONLY the summary text. No explanation, no wrapper.`
 
 const cleanupSystemPrompt = `You are a markdown editor specializing in cleaning up web content extractions. You will receive markdown that was extracted from a web page. Your job is to clean it up into a perfectly formatted, readable document.
 

@@ -226,6 +226,31 @@ func (a *Agent) extract(ctx context.Context, targetURL string, usage *Usage) (*e
 	return nil, fmt.Errorf("extraction loop exceeded %d iterations", maxIterations)
 }
 
+// Summarize generates a concise summary of the given content.
+func (a *Agent) Summarize(ctx context.Context, content string) (string, error) {
+	msg, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     a.model,
+		MaxTokens: 1024,
+		System: []anthropic.TextBlockParam{
+			{Text: summarizeSystemPrompt},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(content)),
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("calling summarize: %w", err)
+	}
+
+	for _, block := range msg.Content {
+		if block.Type == "text" {
+			return block.Text, nil
+		}
+	}
+
+	return "", fmt.Errorf("summarize returned no text response")
+}
+
 func (a *Agent) cleanup(ctx context.Context, markdown string, usage *Usage) (string, error) {
 	msg, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     a.model,
