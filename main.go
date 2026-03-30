@@ -74,6 +74,7 @@ func buildRegistry(cfg *config.Config) *tool.Registry {
 	var tools []tool.Tool
 
 	tools = append(tools, tool.NewHTTPFetch())
+	tools = append(tools, tool.NewGitHubReadme())
 
 	if cfg.CloudflareAPIToken != "" && cfg.CloudflareAccountID != "" {
 		tools = append(tools, tool.NewCloudflareContent(cfg.CloudflareAPIToken, cfg.CloudflareAccountID))
