@@ -16,6 +16,8 @@ func TestParseGitHubURL(t *testing.T) {
 		{"http://github.com/owner/repo", "owner", "repo", false},
 		{"github.com/owner/repo", "owner", "repo", false},
 		{"https://github.com/imbue-ai/offload", "imbue-ai", "offload", false},
+		{"https://github.com/owner/repo.git", "owner", "repo", false},
+		{"https://github.com/owner/repo/", "owner", "repo", false},
 		{"https://example.com/owner/repo", "", "", true},
 		{"https://github.com/", "", "", true},
 		{"https://github.com/owner", "", "", true},
@@ -39,11 +41,11 @@ func TestParseGitHubURL(t *testing.T) {
 	}
 }
 
-func TestIsGitHubURL(t *testing.T) {
-	if !IsGitHubURL("https://github.com/owner/repo") {
+func Test_isGitHubURL(t *testing.T) {
+	if !isGitHubURL("https://github.com/owner/repo") {
 		t.Error("expected true for github URL")
 	}
-	if IsGitHubURL("https://example.com/page") {
+	if isGitHubURL("https://example.com/page") {
 		t.Error("expected false for non-github URL")
 	}
 }

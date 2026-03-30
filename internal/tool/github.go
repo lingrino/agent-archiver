@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -51,18 +52,61 @@ func (t *GitHubReadme) Execute(ctx context.Context, input json.RawMessage) (stri
 		return "", err
 	}
 
-	// Try common README filenames on the main branch, then master
-	branches := []string{"main", "master"}
-	filenames := []string{"README.md", "readme.md", "README.rst", "README"}
+	// Try common README filenames on main and master branches in parallel.
+	// Candidates are ordered by priority (most common first).
+	type candidate struct {
+		branch   string
+		filename string
+	}
+	candidates := []candidate{
+		{"main", "README.md"},
+		{"master", "README.md"},
+		{"main", "readme.md"},
+		{"master", "readme.md"},
+		{"main", "README.rst"},
+		{"master", "README.rst"},
+		{"main", "README"},
+		{"master", "README"},
+	}
 
-	for _, branch := range branches {
-		for _, filename := range filenames {
+	type result struct {
+		index   int
+		content string
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		best *result
+	)
+
+	for i, c := range candidates {
+		wg.Add(1)
+		go func(idx int, branch, filename string) {
+			defer wg.Done()
 			rawURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", owner, repo, branch, filename)
 			content, fetchErr := t.fetchRaw(ctx, rawURL)
-			if fetchErr == nil {
-				return content, nil
+			if fetchErr != nil {
+				return
 			}
-		}
+			mu.Lock()
+			defer mu.Unlock()
+			if best == nil || idx < best.index {
+				best = &result{index: idx, content: content}
+			}
+			if idx == 0 {
+				cancel()
+			}
+		}(i, c.branch, c.filename)
+	}
+
+	wg.Wait()
+
+	if best != nil {
+		return best.content, nil
 	}
 
 	return "", fmt.Errorf("could not find README for %s/%s", owner, repo)
@@ -109,16 +153,18 @@ func parseGitHubURL(rawURL string) (owner, repo string, err error) {
 		return "", "", fmt.Errorf("not a GitHub URL: %s", rawURL)
 	}
 
+	u = strings.TrimSuffix(u, "/")
+
 	parts := strings.Split(strings.TrimPrefix(u, "github.com/"), "/")
 	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", fmt.Errorf("could not parse owner/repo from: %s", rawURL)
 	}
 
-	return parts[0], parts[1], nil
+	return parts[0], strings.TrimSuffix(parts[1], ".git"), nil
 }
 
-// IsGitHubURL returns true if the URL points to a GitHub repository.
-func IsGitHubURL(rawURL string) bool {
+// isGitHubURL returns true if the URL points to a GitHub repository.
+func isGitHubURL(rawURL string) bool {
 	_, _, err := parseGitHubURL(rawURL)
 	return err == nil
 }
