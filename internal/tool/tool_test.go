@@ -26,12 +26,15 @@ func (m *mockTool) Execute(_ context.Context, _ json.RawMessage) (string, error)
 }
 
 func TestRegistryNames(t *testing.T) {
+	t.Parallel()
+
 	r := NewRegistry(
 		&mockTool{name: "tool_a"},
 		&mockTool{name: "tool_b"},
 		&mockTool{name: "tool_c"},
 	)
 
+	// Names() preserves insertion order via Registry.order slice.
 	names := r.Names()
 	if len(names) != 3 {
 		t.Fatalf("expected 3 names, got %d", len(names))
@@ -42,27 +45,54 @@ func TestRegistryNames(t *testing.T) {
 }
 
 func TestRegistryExecute(t *testing.T) {
-	r := NewRegistry(&mockTool{name: "test", result: "hello"})
+	t.Parallel()
 
-	result, err := r.Execute(context.Background(), "test", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	tests := []struct {
+		name       string
+		giveTools  []Tool
+		giveName   string
+		wantResult string
+		wantErr    bool
+	}{
+		{
+			name:       "known tool",
+			giveTools:  []Tool{&mockTool{name: "test", result: "hello"}},
+			giveName:   "test",
+			wantResult: "hello",
+		},
+		{
+			name:     "unknown tool",
+			giveName: "nonexistent",
+			wantErr:  true,
+		},
 	}
-	if result != "hello" {
-		t.Errorf("expected 'hello', got %q", result)
-	}
-}
 
-func TestRegistryExecuteUnknown(t *testing.T) {
-	r := NewRegistry()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	_, err := r.Execute(context.Background(), "nonexistent", nil)
-	if err == nil {
-		t.Error("expected error for unknown tool")
+			r := NewRegistry(tt.giveTools...)
+
+			result, err := r.Execute(context.Background(), tt.giveName, nil)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result != tt.wantResult {
+				t.Errorf("got %q, want %q", result, tt.wantResult)
+			}
+		})
 	}
 }
 
 func TestRegistryAnthropicTools(t *testing.T) {
+	t.Parallel()
+
 	r := NewRegistry(
 		&mockTool{name: "tool_a"},
 		&mockTool{name: "tool_b"},

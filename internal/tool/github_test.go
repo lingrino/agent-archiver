@@ -5,8 +5,10 @@ import (
 )
 
 func TestParseGitHubURL(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		url       string
+		give      string
 		wantOwner string
 		wantRepo  string
 		wantErr   bool
@@ -25,10 +27,12 @@ func TestParseGitHubURL(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.url, func(t *testing.T) {
-			owner, repo, err := parseGitHubURL(tt.url)
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
+			owner, repo, err := parseGitHubURL(tt.give)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("parseGitHubURL(%q) error = %v, wantErr %v", tt.url, err, tt.wantErr)
+				t.Errorf("parseGitHubURL(%q) error = %v, wantErr %v", tt.give, err, tt.wantErr)
 				return
 			}
 			if owner != tt.wantOwner {
@@ -41,11 +45,24 @@ func TestParseGitHubURL(t *testing.T) {
 	}
 }
 
-func Test_isGitHubURL(t *testing.T) {
-	if !isGitHubURL("https://github.com/owner/repo") {
-		t.Error("expected true for github URL")
+func TestIsGitHubURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give string
+		want bool
+	}{
+		{"https://github.com/owner/repo", true},
+		{"https://example.com/page", false},
 	}
-	if isGitHubURL("https://example.com/page") {
-		t.Error("expected false for non-github URL")
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isGitHubURL(tt.give); got != tt.want {
+				t.Errorf("isGitHubURL(%q) = %v, want %v", tt.give, got, tt.want)
+			}
+		})
 	}
 }
