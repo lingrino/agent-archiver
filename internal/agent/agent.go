@@ -65,6 +65,7 @@ func (a *Agent) Archive(ctx context.Context, targetURL string) (*archive.Archive
 			Title:        extractionResult.Title,
 			Author:       extractionResult.Author,
 			Date:         extractionResult.Date,
+			Summary:      extractionResult.Summary,
 			URL:          targetURL,
 			DownloadedAt: time.Now().UTC(),
 		},
@@ -79,6 +80,7 @@ type extractionResponse struct {
 	Author     string `json:"author" jsonschema_description:"Author name if found, or empty string"`
 	Date       string `json:"date" jsonschema_description:"Publication date in YYYY-MM-DD format if found, or empty string"`
 	Markdown   string `json:"markdown" jsonschema_description:"The full article content as clean markdown"`
+	Summary    string `json:"summary" jsonschema_description:"A concise summary paragraph of 3-8 sentences capturing the key ideas of the content"`
 	Confidence string `json:"confidence" jsonschema:"enum=high,enum=medium,enum=low" jsonschema_description:"Your confidence that the full article was extracted correctly"`
 }
 

@@ -81,6 +81,10 @@ func buildRegistry(cfg *config.Config) *tool.Registry {
 		tools = append(tools, tool.NewCloudflareMarkdown(cfg.CloudflareAPIToken, cfg.CloudflareAccountID))
 	}
 
+	if cfg.ExaAPIKey != "" {
+		tools = append(tools, tool.NewExaSearch(cfg.ExaAPIKey))
+	}
+
 	if tool.TrafilaturaAvailable() {
 		tools = append(tools, tool.NewTrafilatura())
 	}

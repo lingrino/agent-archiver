@@ -28,6 +28,13 @@ Guidelines for the markdown field:
 - Do not add any content that was not in the original article
 - Do not summarize — extract the FULL article text
 
+Guidelines for the summary field:
+- Write a concise summary of 3-8 sentences that captures the key ideas, findings, or purpose of the content
+- For articles and blog posts: distill the main argument, findings, or takeaways
+- For landing pages, product pages, or tool pages: describe what the product or tool does and its key value proposition. Use the web_search tool if available to gather additional context before writing the summary.
+- Do not simply repeat the title — the summary should add informational value beyond the title
+- Write in a neutral, informative tone
+
 If you cannot extract the content with reasonable confidence, set confidence to "low" and explain the issue in the markdown field.`
 
 const cleanupSystemPrompt = `You are a markdown editor specializing in cleaning up web content extractions. You will receive markdown that was extracted from a web page. Your job is to clean it up into a perfectly formatted, readable document.
