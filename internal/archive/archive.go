@@ -26,13 +26,13 @@ const (
 )
 
 type Metadata struct {
-	Title        string    `yaml:"title"`
-	Author       string    `yaml:"author,omitempty"`
-	Date         string    `yaml:"date,omitempty"`
+	Title        string      `yaml:"title"`
+	Author       string      `yaml:"author,omitempty"`
+	Date         string      `yaml:"date,omitempty"`
 	Type         ContentType `yaml:"type"`
-	Summary      string    `yaml:"summary,omitempty"`
-	URL          string    `yaml:"url"`
-	DownloadedAt time.Time `yaml:"downloaded_at"`
+	Summary      string      `yaml:"summary,omitempty"`
+	URL          string      `yaml:"url"`
+	DownloadedAt time.Time   `yaml:"downloaded_at"`
 }
 
 type Archive struct {
