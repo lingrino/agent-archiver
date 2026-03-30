@@ -28,7 +28,7 @@ A duplicate: ![dup](https://example.com/image.png)
 URL with parens: ![chart](https://example.com/Diagram%20(2).png/_jcr_content/renditions/Diagram%20(2).webp)
 `
 
-	urls := extractImageURLs(markdown)
+	refs := extractImageURLs(markdown, "")
 
 	want := []string{
 		"https://example.com/image.png",
@@ -37,13 +37,13 @@ URL with parens: ![chart](https://example.com/Diagram%20(2).png/_jcr_content/ren
 		"https://example.com/html-image.webp",
 	}
 
-	if len(urls) != len(want) {
-		t.Fatalf("extractImageURLs() returned %d URLs, want %d: %v", len(urls), len(want), urls)
+	if len(refs) != len(want) {
+		t.Fatalf("extractImageURLs() returned %d refs, want %d: %v", len(refs), len(want), refs)
 	}
 
-	for i, u := range urls {
-		if u != want[i] {
-			t.Errorf("url[%d] = %q, want %q", i, u, want[i])
+	for i, ref := range refs {
+		if ref.resolved != want[i] {
+			t.Errorf("ref[%d].resolved = %q, want %q", i, ref.resolved, want[i])
 		}
 	}
 }
@@ -106,7 +106,7 @@ func TestProcessMarkdown(t *testing.T) {
 	imageDir := t.TempDir()
 	markdown := "# Test\n\n![alt](" + srv.URL + "/test-image.png)\n"
 
-	result, err := ProcessMarkdown(context.Background(), markdown, imageDir)
+	result, err := ProcessMarkdown(context.Background(), markdown, imageDir, srv.URL)
 	if err != nil {
 		t.Fatalf("ProcessMarkdown() error: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestProcessMarkdown(t *testing.T) {
 
 func TestProcessMarkdownNoImages(t *testing.T) {
 	markdown := "# Test\n\nNo images here.\n"
-	result, err := ProcessMarkdown(context.Background(), markdown, t.TempDir())
+	result, err := ProcessMarkdown(context.Background(), markdown, t.TempDir(), "https://example.com/page")
 	if err != nil {
 		t.Fatalf("ProcessMarkdown() error: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestProcessMarkdownFailedDownload(t *testing.T) {
 	imageDir := t.TempDir()
 	markdown := "![alt](" + srv.URL + "/missing.png)\n"
 
-	result, err := ProcessMarkdown(context.Background(), markdown, imageDir)
+	result, err := ProcessMarkdown(context.Background(), markdown, imageDir, srv.URL)
 	if err != nil {
 		t.Fatalf("ProcessMarkdown() error: %v", err)
 	}
@@ -164,6 +164,64 @@ func TestProcessMarkdownFailedDownload(t *testing.T) {
 	files, _ := os.ReadDir(imageDir)
 	if len(files) != 0 {
 		t.Errorf("expected no files after failed download, got %d", len(files))
+	}
+}
+
+func TestExtractImageURLsRelative(t *testing.T) {
+	markdown := `![logo](assets/images/logo.png)
+
+![absolute](https://example.com/abs.png)
+
+![root-relative](/images/root.png)
+`
+	refs := extractImageURLs(markdown, "https://vaku.dev/")
+
+	want := []imageRef{
+		{original: "assets/images/logo.png", resolved: "https://vaku.dev/assets/images/logo.png"},
+		{original: "https://example.com/abs.png", resolved: "https://example.com/abs.png"},
+		{original: "/images/root.png", resolved: "https://vaku.dev/images/root.png"},
+	}
+
+	if len(refs) != len(want) {
+		t.Fatalf("extractImageURLs() returned %d refs, want %d: %v", len(refs), len(want), refs)
+	}
+
+	for i, ref := range refs {
+		if ref.original != want[i].original {
+			t.Errorf("ref[%d].original = %q, want %q", i, ref.original, want[i].original)
+		}
+		if ref.resolved != want[i].resolved {
+			t.Errorf("ref[%d].resolved = %q, want %q", i, ref.resolved, want[i].resolved)
+		}
+	}
+}
+
+func TestProcessMarkdownRelativeImages(t *testing.T) {
+	imageData := []byte{0x89, 0x50, 0x4e, 0x47}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(imageData)
+	}))
+	defer srv.Close()
+
+	imageDir := t.TempDir()
+	markdown := "# Test\n\n![logo](assets/images/logo.png)\n"
+
+	result, err := ProcessMarkdown(context.Background(), markdown, imageDir, srv.URL+"/page/")
+	if err != nil {
+		t.Fatalf("ProcessMarkdown() error: %v", err)
+	}
+
+	if strings.Contains(result, "assets/images/logo.png") {
+		t.Error("result still contains original relative path")
+	}
+	if !strings.Contains(result, "./") {
+		t.Errorf("result should contain relative path, got: %s", result)
+	}
+
+	files, _ := filepath.Glob(filepath.Join(imageDir, "*"))
+	if len(files) == 0 {
+		t.Error("no image files downloaded")
 	}
 }
 
