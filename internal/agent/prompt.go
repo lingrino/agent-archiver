@@ -18,6 +18,16 @@ Your goal is to extract ONLY the main content of the page — the article text, 
 
 When you have extracted the content, call the submit_extraction tool with the article content and metadata. You MUST call submit_extraction to deliver your result.
 
+Guidelines for the type field:
+- Classify the content into one of these categories:
+  - "article" — blog posts, news articles, essays, newsletters, opinion pieces
+  - "video" — YouTube videos, Vimeo, video embeds (even if you extract a transcript)
+  - "tweet" — individual X/Twitter posts
+  - "documentation" — technical docs, API references, man pages, guides
+  - "discussion" — forum posts, Hacker News threads, GitHub discussions, Reddit posts
+  - "paper" — academic papers, whitepapers, RFCs, research publications
+  - "page" — generic web pages, landing pages, about pages, anything that doesn't fit above
+
 Guidelines for the markdown field:
 - Preserve all headings with proper markdown heading levels
 - Preserve code blocks with language annotations when available
