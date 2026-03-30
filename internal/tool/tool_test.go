@@ -34,6 +34,7 @@ func TestRegistryNames(t *testing.T) {
 		&mockTool{name: "tool_c"},
 	)
 
+	// Names() preserves insertion order via Registry.order slice.
 	names := r.Names()
 	if len(names) != 3 {
 		t.Fatalf("expected 3 names, got %d", len(names))

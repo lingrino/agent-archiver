@@ -127,6 +127,11 @@ func TestFilenameFromURL(t *testing.T) {
 			give:       "https://example.com/images/other.png",
 			wantSuffix: ".png",
 		},
+		{
+			name:       "special characters in URL",
+			give:       "https://example.com/Diagram%20(2).png",
+			wantSuffix: ".png",
+		},
 	}
 
 	for _, tt := range tests {

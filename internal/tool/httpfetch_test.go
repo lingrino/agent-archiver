@@ -14,8 +14,8 @@ func TestHTTPFetchExecute(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		giveHandler  http.HandlerFunc
-		giveInput    json.RawMessage
+		giveHandler  http.HandlerFunc // nil means no server; uses giveInput directly
+		giveInput    json.RawMessage  // if nil and giveHandler is set, input is built from the server URL
 		wantContains string
 		wantErr      bool
 	}{
