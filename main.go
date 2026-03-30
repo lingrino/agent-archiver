@@ -53,7 +53,7 @@ func main() {
 		log.Printf("available tools: %v", registry.Names())
 	}
 
-	result, err := a.Archive(ctx, targetURL)
+	result, usage, err := a.Archive(ctx, targetURL)
 	if err != nil {
 		log.Fatalf("archive failed: %v", err)
 	}
@@ -68,6 +68,14 @@ func main() {
 	}
 
 	fmt.Printf("archived to %s\n", result.OutputPath(archiveDir))
+
+	if cfg.Verbose {
+		log.Printf("tokens: %d input, %d output", usage.InputTokens, usage.OutputTokens)
+		if usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0 {
+			log.Printf("cache: %d read, %d creation", usage.CacheReadInputTokens, usage.CacheCreationInputTokens)
+		}
+		log.Printf("estimated cost: $%.4f", usage.Cost(model))
+	}
 }
 
 func buildRegistry(cfg *config.Config) *tool.Registry {

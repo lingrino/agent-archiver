@@ -17,6 +17,44 @@ const maxIterations = 20
 
 const submitToolName = "submit_extraction"
 
+// Usage tracks cumulative token usage across all API calls.
+type Usage struct {
+	InputTokens              int64
+	OutputTokens             int64
+	CacheCreationInputTokens int64
+	CacheReadInputTokens     int64
+}
+
+func (u *Usage) add(msg *anthropic.Message) {
+	u.InputTokens += msg.Usage.InputTokens
+	u.OutputTokens += msg.Usage.OutputTokens
+	u.CacheCreationInputTokens += msg.Usage.CacheCreationInputTokens
+	u.CacheReadInputTokens += msg.Usage.CacheReadInputTokens
+}
+
+// Cost returns the estimated cost in USD based on model pricing.
+func (u *Usage) Cost(model string) float64 {
+	inputPrice, outputPrice := modelPricing(model)
+	return float64(u.InputTokens)*inputPrice/1_000_000 +
+		float64(u.OutputTokens)*outputPrice/1_000_000 +
+		float64(u.CacheCreationInputTokens)*inputPrice*1.25/1_000_000 +
+		float64(u.CacheReadInputTokens)*inputPrice*0.1/1_000_000
+}
+
+// modelPricing returns (input, output) price per million tokens.
+func modelPricing(model string) (float64, float64) {
+	switch model {
+	case "claude-opus-4-6", "claude-opus-4-20250918":
+		return 15.0, 75.0
+	case "claude-sonnet-4-6", "claude-sonnet-4-20250514":
+		return 3.0, 15.0
+	case "claude-haiku-4-5-20251001":
+		return 0.80, 4.0
+	default:
+		return 3.0, 15.0 // default to sonnet pricing
+	}
+}
+
 type Agent struct {
 	client   *anthropic.Client
 	registry *tool.Registry
@@ -35,19 +73,22 @@ func New(cfg *config.Config, registry *tool.Registry) *Agent {
 }
 
 // Archive runs the two-phase pipeline: extraction then cleanup.
-func (a *Agent) Archive(ctx context.Context, targetURL string) (*archive.Archive, error) {
+// It returns the archive and cumulative token usage across all API calls.
+func (a *Agent) Archive(ctx context.Context, targetURL string) (*archive.Archive, *Usage, error) {
+	var usage Usage
+
 	// Phase 1: Extraction
 	if a.verbose {
 		log.Printf("phase 1: extracting content from %s", targetURL)
 	}
 
-	extractionResult, err := a.extract(ctx, targetURL)
+	extractionResult, err := a.extract(ctx, targetURL, &usage)
 	if err != nil {
-		return nil, fmt.Errorf("extraction: %w", err)
+		return nil, &usage, fmt.Errorf("extraction: %w", err)
 	}
 
 	if extractionResult.Confidence == "low" {
-		return nil, fmt.Errorf("extraction confidence too low — the agent could not reliably extract content from this URL")
+		return nil, &usage, fmt.Errorf("extraction confidence too low — the agent could not reliably extract content from this URL")
 	}
 
 	// Phase 2: Cleanup
@@ -55,9 +96,9 @@ func (a *Agent) Archive(ctx context.Context, targetURL string) (*archive.Archive
 		log.Printf("phase 2: cleaning up extracted markdown")
 	}
 
-	cleanedMarkdown, err := a.cleanup(ctx, extractionResult.Markdown)
+	cleanedMarkdown, err := a.cleanup(ctx, extractionResult.Markdown, &usage)
 	if err != nil {
-		return nil, fmt.Errorf("cleanup: %w", err)
+		return nil, &usage, fmt.Errorf("cleanup: %w", err)
 	}
 
 	return &archive.Archive{
@@ -72,7 +113,7 @@ func (a *Agent) Archive(ctx context.Context, targetURL string) (*archive.Archive
 		Content: cleanedMarkdown,
 		Domain:  archive.DomainFromURL(targetURL),
 		Slug:    archive.SlugFromURL(targetURL),
-	}, nil
+	}, &usage, nil
 }
 
 type extractionResponse struct {
@@ -100,7 +141,7 @@ func submitExtractionTool() anthropic.ToolUnionParam {
 	}
 }
 
-func (a *Agent) extract(ctx context.Context, targetURL string) (*extractionResponse, error) {
+func (a *Agent) extract(ctx context.Context, targetURL string, usage *Usage) (*extractionResponse, error) {
 	userMessage := fmt.Sprintf("Extract the full article content from this URL: %s", targetURL)
 
 	// Combine real tools with the structured output tool
@@ -127,6 +168,7 @@ func (a *Agent) extract(ctx context.Context, targetURL string) (*extractionRespo
 		if err != nil {
 			return nil, fmt.Errorf("calling anthropic API: %w", err)
 		}
+		usage.add(msg)
 
 		if msg.StopReason == anthropic.StopReasonEndTurn {
 			return nil, fmt.Errorf("agent ended without calling %s — no structured result returned", submitToolName)
@@ -182,7 +224,7 @@ func (a *Agent) extract(ctx context.Context, targetURL string) (*extractionRespo
 	return nil, fmt.Errorf("extraction loop exceeded %d iterations", maxIterations)
 }
 
-func (a *Agent) cleanup(ctx context.Context, markdown string) (string, error) {
+func (a *Agent) cleanup(ctx context.Context, markdown string, usage *Usage) (string, error) {
 	msg, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     a.model,
 		MaxTokens: 16384,
@@ -196,6 +238,7 @@ func (a *Agent) cleanup(ctx context.Context, markdown string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("calling cleanup: %w", err)
 	}
+	usage.add(msg)
 
 	for _, block := range msg.Content {
 		if block.Type == "text" {
