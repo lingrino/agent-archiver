@@ -386,7 +386,7 @@ func TestFormatTweetsMarkdown(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := formatTweetsMarkdown(tt.tweets, tt.users, tt.media)
+			result := formatTweetsMarkdown(tt.tweets, tt.users, tt.media, &twitterIncludes{})
 			for _, s := range tt.wantContains {
 				if !strings.Contains(result, s) {
 					t.Errorf("result should contain %q, got:\n%s", s, result)

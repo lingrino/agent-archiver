@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -177,7 +178,6 @@ type twitterUser struct {
 	Name            string `json:"name"`
 	Username        string `json:"username"`
 	ProfileImageURL string `json:"profile_image_url"`
-	Verified        bool   `json:"verified"`
 }
 
 type twitterMeta struct {
@@ -219,7 +219,7 @@ func (t *Twitter) Execute(ctx context.Context, input json.RawMessage) (string, e
 	}
 
 	// Format as markdown
-	return formatTweetsMarkdown(tweets, userMap, mediaMap), nil
+	return formatTweetsMarkdown(tweets, userMap, mediaMap, includes), nil
 }
 
 // Fetch fetches a tweet/thread and returns a structured result for direct archiving,
@@ -243,22 +243,10 @@ func (t *Twitter) Fetch(ctx context.Context, rawURL string) (*TweetResult, error
 		return nil, fmt.Errorf("collecting thread: %w", err)
 	}
 
-	// Determine type and build metadata
-	isThread := false
-	if len(tweets) > 1 {
-		convID := tweets[0].ConversationID
-		authorID := tweets[0].AuthorID
-		threadCount := 0
-		for _, tw := range tweets {
-			if tw.ConversationID == convID && tw.AuthorID == authorID {
-				threadCount++
-			}
-		}
-		isThread = threadCount > 1
-	}
+	isThread := isThreadTweets(tweets)
 
 	result := &TweetResult{
-		Markdown: formatTweetsMarkdown(tweets, userMap, mediaMap),
+		Markdown: formatTweetsMarkdown(tweets, userMap, mediaMap, includes),
 	}
 
 	// Author
@@ -284,12 +272,13 @@ func (t *Twitter) Fetch(ctx context.Context, rawURL string) (*TweetResult, error
 	} else {
 		result.Type = "tweet"
 		title := tweets[0].fullText()
-		// Truncate long titles
-		if len(title) > 100 {
-			title = title[:100] + "..."
-		}
 		// Remove newlines from title
 		title = strings.ReplaceAll(title, "\n", " ")
+		// Truncate long titles (rune-safe to avoid splitting multi-byte chars)
+		runes := []rune(title)
+		if len(runes) > 100 {
+			title = string(runes[:100]) + "..."
+		}
 		result.Title = title
 	}
 
@@ -301,7 +290,7 @@ func (t *Twitter) fetchTweet(ctx context.Context, tweetID string) (*tweetData, *
 	params := url.Values{}
 	params.Set("tweet.fields", "author_id,conversation_id,created_at,entities,in_reply_to_user_id,public_metrics,referenced_tweets,attachments,note_tweet")
 	params.Set("expansions", "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id")
-	params.Set("user.fields", "name,username,profile_image_url,verified")
+	params.Set("user.fields", "name,username,profile_image_url")
 	params.Set("media.fields", "type,url,preview_image_url,alt_text,variants")
 
 	apiURL := fmt.Sprintf("https://api.x.com/2/tweets/%s?%s", tweetID, params.Encode())
@@ -371,17 +360,20 @@ func (t *Twitter) searchConversation(ctx context.Context, conversationID, userna
 	return nil, &twitterIncludes{}, nil
 }
 
+const maxSearchPages = 10
+
 func (t *Twitter) doConversationSearch(ctx context.Context, searchType, conversationID, username string) ([]tweetData, *twitterIncludes, error) {
 	allIncludes := &twitterIncludes{}
 	var allTweets []tweetData
 	nextToken := ""
 
-	for {
+	for page := range maxSearchPages {
+		_ = page
 		params := url.Values{}
 		params.Set("query", fmt.Sprintf("conversation_id:%s from:%s", conversationID, username))
 		params.Set("tweet.fields", "author_id,conversation_id,created_at,entities,in_reply_to_user_id,public_metrics,referenced_tweets,attachments,note_tweet")
 		params.Set("expansions", "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id")
-		params.Set("user.fields", "name,username,profile_image_url,verified")
+		params.Set("user.fields", "name,username,profile_image_url")
 		params.Set("media.fields", "type,url,preview_image_url,alt_text,variants")
 		params.Set("max_results", "100")
 		params.Set("sort_order", "recency")
@@ -521,10 +513,56 @@ func (t *Twitter) collectThread(ctx context.Context, tweet *tweetData, includes 
 	// Build the self-reply chain and sort chronologically
 	chain := buildSelfReplyChain(candidates, tweet.ID, tweet.AuthorID)
 	sort.Slice(chain, func(i, j int) bool {
-		return chain[i].ID < chain[j].ID
+		return tweetIDBefore(chain[i].ID, chain[j].ID)
 	})
 
 	return chain, nil
+}
+
+// tweetIDBefore compares two tweet IDs numerically.
+// Tweet IDs are Snowflake-based uint64s; string comparison would mis-order
+// IDs of different lengths (e.g. "9" > "10" lexicographically).
+func tweetIDBefore(a, b string) bool {
+	ai, errA := strconv.ParseUint(a, 10, 64)
+	bi, errB := strconv.ParseUint(b, 10, 64)
+	if errA != nil || errB != nil {
+		return a < b // fallback to string comparison
+	}
+	return ai < bi
+}
+
+// isThreadTweets returns true if the tweets form a self-reply thread
+// (multiple tweets by the same author in the same conversation).
+func isThreadTweets(tweets []tweetData) bool {
+	if len(tweets) < 2 {
+		return false
+	}
+	convID := tweets[0].ConversationID
+	authorID := tweets[0].AuthorID
+	count := 0
+	for _, tw := range tweets {
+		if tw.ConversationID == convID && tw.AuthorID == authorID {
+			count++
+		}
+	}
+	return count > 1
+}
+
+// findTweet searches for a tweet by ID in the main slice and includes.
+func findTweet(id string, tweets []tweetData, includes *twitterIncludes) (tweetData, bool) {
+	for _, tw := range tweets {
+		if tw.ID == id {
+			return tw, true
+		}
+	}
+	if includes != nil {
+		for _, tw := range includes.Tweets {
+			if tw.ID == id {
+				return tw, true
+			}
+		}
+	}
+	return tweetData{}, false
 }
 
 // repliedToID returns the ID of the tweet this one is replying to, or "".
@@ -600,26 +638,16 @@ func buildSelfReplyChain(candidates map[string]tweetData, targetID, authorID str
 }
 
 // formatTweetsMarkdown renders a slice of tweets as clean markdown.
-func formatTweetsMarkdown(tweets []tweetData, userMap map[string]*twitterUser, mediaMap map[string]*twitterMedia) string {
+// includes provides access to referenced tweets (e.g. quoted tweets) that
+// may not be in the main tweets slice.
+func formatTweetsMarkdown(tweets []tweetData, userMap map[string]*twitterUser, mediaMap map[string]*twitterMedia, includes *twitterIncludes) string {
 	if len(tweets) == 0 {
 		return ""
 	}
 
 	var sb strings.Builder
 
-	// Determine if this is a thread (multiple tweets from the same author in same conversation)
-	isThread := false
-	if len(tweets) > 1 {
-		convID := tweets[0].ConversationID
-		authorID := tweets[0].AuthorID
-		threadCount := 0
-		for _, tw := range tweets {
-			if tw.ConversationID == convID && tw.AuthorID == authorID {
-				threadCount++
-			}
-		}
-		isThread = threadCount > 1
-	}
+	isThread := isThreadTweets(tweets)
 
 	// Title
 	firstAuthor := userMap[tweets[0].AuthorID]
@@ -638,19 +666,7 @@ func formatTweetsMarkdown(tweets []tweetData, userMap map[string]*twitterUser, m
 				// Thread post by the main author
 				fmt.Fprintf(&sb, "## %d.\n\n", threadPostNumber(tweets[:i+1], tweets[0].AuthorID))
 			} else if user != nil {
-				// Reply from a different user, or conversation context
-				isReplyContext := false
-				for _, ref := range tweets[min(i+1, len(tweets)-1)].ReferencedTweets {
-					if ref.Type == "replied_to" && ref.ID == tw.ID {
-						isReplyContext = true
-						break
-					}
-				}
-				if isReplyContext {
-					fmt.Fprintf(&sb, "### In reply to %s (@%s):\n\n", user.Name, user.Username)
-				} else {
-					fmt.Fprintf(&sb, "## %s (@%s)\n\n", user.Name, user.Username)
-				}
+				fmt.Fprintf(&sb, "## %s (@%s)\n\n", user.Name, user.Username)
 			}
 		}
 
@@ -694,24 +710,23 @@ func formatTweetsMarkdown(tweets []tweetData, userMap map[string]*twitterUser, m
 			}
 		}
 
-		// Quoted tweet
+		// Quoted tweet — search both the main tweets slice and includes
 		for _, ref := range tw.ReferencedTweets {
-			if ref.Type == "quoted" {
-				// Find the quoted tweet in our collection
-				for _, qt := range tweets {
-					if qt.ID == ref.ID {
-						qUser := userMap[qt.AuthorID]
-						if qUser != nil {
-							fmt.Fprintf(&sb, "> **%s** (@%s):\n", qUser.Name, qUser.Username)
-						}
-						for line := range strings.SplitSeq(qt.fullText(), "\n") {
-							fmt.Fprintf(&sb, "> %s\n", line)
-						}
-						sb.WriteString("\n")
-						break
-					}
-				}
+			if ref.Type != "quoted" {
+				continue
 			}
+			qt, found := findTweet(ref.ID, tweets, includes)
+			if !found {
+				continue
+			}
+			qUser := userMap[qt.AuthorID]
+			if qUser != nil {
+				fmt.Fprintf(&sb, "> **%s** (@%s):\n", qUser.Name, qUser.Username)
+			}
+			for line := range strings.SplitSeq(qt.fullText(), "\n") {
+				fmt.Fprintf(&sb, "> %s\n", line)
+			}
+			sb.WriteString("\n")
 		}
 
 		// Metrics (only on the last tweet or standalone tweets)
