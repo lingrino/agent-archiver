@@ -28,6 +28,18 @@ func TestExaSearchExecute(t *testing.T) {
 		if reqBody.Query != "test query" {
 			t.Errorf("expected query 'test query', got %q", reqBody.Query)
 		}
+		if reqBody.Type != "auto" {
+			t.Errorf("expected type 'auto', got %q", reqBody.Type)
+		}
+		if reqBody.NumResults != 5 {
+			t.Errorf("expected numResults 5, got %d", reqBody.NumResults)
+		}
+		if reqBody.Contents.Highlights.NumHighlightsPerURL != 3 {
+			t.Errorf("expected numHighlightsPerUrl 3, got %d", reqBody.Contents.Highlights.NumHighlightsPerURL)
+		}
+		if reqBody.Contents.Highlights.MaxCharacters != 4000 {
+			t.Errorf("expected maxCharacters 4000, got %d", reqBody.Contents.Highlights.MaxCharacters)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(exaResponse{
@@ -112,6 +124,7 @@ func TestExaSearchExecuteInvalidInput(t *testing.T) {
 func TestExaSearchExecuteAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error": "invalid api key"}`))
 	}))
 	defer server.Close()
 
@@ -128,5 +141,8 @@ func TestExaSearchExecuteAPIError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "401") {
 		t.Errorf("error should mention status code, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "invalid api key") {
+		t.Errorf("error should include response body, got: %v", err)
 	}
 }

@@ -57,7 +57,8 @@ type exaContentConfig struct {
 }
 
 type exaHighlightConfig struct {
-	MaxCharacters int `json:"maxCharacters"`
+	NumHighlightsPerURL int `json:"numHighlightsPerUrl"`
+	MaxCharacters       int `json:"maxCharacters"`
 }
 
 type exaResponse struct {
@@ -82,7 +83,7 @@ func (t *ExaSearch) Execute(ctx context.Context, input json.RawMessage) (string,
 		Type:       "auto",
 		NumResults: 5,
 		Contents: exaContentConfig{
-			Highlights: exaHighlightConfig{MaxCharacters: 4000},
+			Highlights: exaHighlightConfig{NumHighlightsPerURL: 3, MaxCharacters: 4000},
 		},
 	}
 
@@ -104,13 +105,13 @@ func (t *ExaSearch) Execute(ctx context.Context, input json.RawMessage) (string,
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("exa API returned HTTP %d", resp.StatusCode)
-	}
-
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
 	if err != nil {
 		return "", fmt.Errorf("reading response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("exa API returned HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var exaResp exaResponse
