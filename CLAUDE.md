@@ -27,4 +27,5 @@ Key packages:
 
 - `ANTHROPIC_API_KEY` (required)
 - `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` (optional, enables Cloudflare tools)
+- `EXA_API_KEY` (optional, enables web search for richer summaries)
 - Trafilatura: auto-detected if binary is in PATH

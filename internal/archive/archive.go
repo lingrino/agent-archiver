@@ -16,6 +16,7 @@ type Metadata struct {
 	Title        string    `yaml:"title"`
 	Author       string    `yaml:"author,omitempty"`
 	Date         string    `yaml:"date,omitempty"`
+	Summary      string    `yaml:"summary,omitempty"`
 	URL          string    `yaml:"url"`
 	DownloadedAt time.Time `yaml:"downloaded_at"`
 }

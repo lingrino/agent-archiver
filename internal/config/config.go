@@ -9,6 +9,7 @@ type Config struct {
 	AnthropicAPIKey     string
 	CloudflareAPIToken  string
 	CloudflareAccountID string
+	ExaAPIKey           string
 	ArchiveDir          string
 	Model               string
 	Verbose             bool
@@ -24,6 +25,7 @@ func Load() (*Config, error) {
 		AnthropicAPIKey:     apiKey,
 		CloudflareAPIToken:  os.Getenv("CLOUDFLARE_API_TOKEN"),
 		CloudflareAccountID: os.Getenv("CLOUDFLARE_ACCOUNT_ID"),
+		ExaAPIKey:           os.Getenv("EXA_API_KEY"),
 		ArchiveDir:          "./archive",
 		Model:               "claude-sonnet-4-6",
 	}, nil
