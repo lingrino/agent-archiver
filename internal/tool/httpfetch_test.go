@@ -10,44 +10,64 @@ import (
 )
 
 func TestHTTPFetchExecute(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte("<html><body><h1>Test</h1></body></html>"))
-	}))
-	defer srv.Close()
+	t.Parallel()
 
-	tool := NewHTTPFetch()
-
-	input, _ := json.Marshal(httpFetchInput{URL: srv.URL})
-	result, err := tool.Execute(context.Background(), input)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	tests := []struct {
+		name         string
+		giveHandler  http.HandlerFunc
+		giveInput    json.RawMessage
+		wantContains string
+		wantErr      bool
+	}{
+		{
+			name: "success",
+			giveHandler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/html")
+				_, _ = w.Write([]byte("<html><body><h1>Test</h1></body></html>"))
+			},
+			wantContains: "<h1>Test</h1>",
+		},
+		{
+			name: "not found",
+			giveHandler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			},
+			wantErr: true,
+		},
+		{
+			name:      "invalid input",
+			giveInput: json.RawMessage(`not json`),
+			wantErr:   true,
+		},
 	}
 
-	if !strings.Contains(result, "<h1>Test</h1>") {
-		t.Errorf("expected HTML content, got: %s", result)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestHTTPFetchExecuteNotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
+			tool := NewHTTPFetch()
 
-	tool := NewHTTPFetch()
+			input := tt.giveInput
+			if input == nil {
+				srv := httptest.NewServer(tt.giveHandler)
+				defer srv.Close()
 
-	input, _ := json.Marshal(httpFetchInput{URL: srv.URL})
-	_, err := tool.Execute(context.Background(), input)
-	if err == nil {
-		t.Error("expected error for 404 response")
-	}
-}
+				input, _ = json.Marshal(httpFetchInput{URL: srv.URL})
+			}
 
-func TestHTTPFetchExecuteInvalidInput(t *testing.T) {
-	tool := NewHTTPFetch()
-	_, err := tool.Execute(context.Background(), []byte("not json"))
-	if err == nil {
-		t.Error("expected error for invalid input")
+			result, err := tool.Execute(context.Background(), input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantContains != "" && !strings.Contains(result, tt.wantContains) {
+				t.Errorf("result does not contain %q, got: %s", tt.wantContains, result)
+			}
+		})
 	}
 }
