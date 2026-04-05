@@ -25,7 +25,11 @@ Key packages:
 
 ## Environment Variables
 
-- `ANTHROPIC_API_KEY` (required)
-- `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` (optional, enables Cloudflare tools)
-- `EXA_API_KEY` (optional, enables web search for richer summaries)
+All environment variables are prefixed with `AA_`.
+
+- `AA_ANTHROPIC_API_KEY` (required)
+- `AA_ARCHIVE_DIR` (optional, default `./archive`, also settable via `-archive-dir` flag)
+- `AA_CLOUDFLARE_API_TOKEN` + `AA_CLOUDFLARE_ACCOUNT_ID` (optional, enables Cloudflare tools)
+- `AA_EXA_API_KEY` (optional, enables web search for richer summaries)
+- `AA_X_BEARER_TOKEN` (optional, enables Twitter/X API)
 - Trafilatura: auto-detected if binary is in PATH

@@ -17,14 +17,19 @@ import (
 )
 
 func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+
 	var (
 		archiveDir string
 		model      string
 		verbose    bool
 	)
 
-	flag.StringVar(&archiveDir, "archive-dir", "./archive", "output directory for archived content")
-	flag.StringVar(&model, "model", "claude-sonnet-4-6", "Claude model to use")
+	flag.StringVar(&archiveDir, "archive-dir", cfg.ArchiveDir, "output directory for archived content (env: AA_ARCHIVE_DIR)")
+	flag.StringVar(&model, "model", cfg.Model, "Claude model to use")
 	flag.BoolVar(&verbose, "verbose", false, "enable verbose logging")
 	flag.Parse()
 
@@ -35,10 +40,6 @@ func main() {
 	}
 	targetURL := flag.Arg(0)
 
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("config: %v", err)
-	}
 	cfg.ArchiveDir = archiveDir
 	cfg.Model = model
 	cfg.Verbose = verbose
