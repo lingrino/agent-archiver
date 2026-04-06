@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/lingrino/agent-archiver/internal/agent"
 	"github.com/lingrino/agent-archiver/internal/archive"
 	"github.com/lingrino/agent-archiver/internal/config"
@@ -82,7 +83,7 @@ func main() {
 		slug := videoID
 		videoArchiveDir := filepath.Join(archiveDir, domain, slug)
 
-		anthClient := anthropic.NewClient()
+		anthClient := anthropic.NewClient(option.WithAPIKey(cfg.AnthropicAPIKey))
 		yt := tool.NewYouTube(cfg.ElevenLabsAPIKey, cfg.ExaAPIKey, &anthClient, anthropic.Model(cfg.Model))
 		yt.SetVerbose(cfg.Verbose)
 

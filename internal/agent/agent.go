@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/lingrino/agent-archiver/internal/archive"
 	"github.com/lingrino/agent-archiver/internal/config"
 	"github.com/lingrino/agent-archiver/internal/tool"
@@ -63,7 +64,7 @@ type Agent struct {
 }
 
 func New(cfg *config.Config, registry *tool.Registry) *Agent {
-	client := anthropic.NewClient()
+	client := anthropic.NewClient(option.WithAPIKey(cfg.AnthropicAPIKey))
 	return &Agent{
 		client:   &client,
 		registry: registry,
