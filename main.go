@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -80,7 +79,7 @@ func main() {
 
 		videoID, _ := tool.ParseYouTubeVideoID(targetURL)
 		domain := archive.DomainFromURL(targetURL)
-		slug := strings.ToLower(videoID)
+		slug := videoID
 		videoArchiveDir := filepath.Join(archiveDir, domain, slug)
 
 		anthClient := anthropic.NewClient()

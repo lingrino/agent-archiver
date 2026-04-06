@@ -19,12 +19,12 @@ type Config struct {
 
 func Load() (*Config, error) {
 	required := map[string]string{
-		"AA_ANTHROPIC_API_KEY":    os.Getenv("AA_ANTHROPIC_API_KEY"),
-		"AA_CLOUDFLARE_API_TOKEN": os.Getenv("AA_CLOUDFLARE_API_TOKEN"),
+		"AA_ANTHROPIC_API_KEY":     os.Getenv("AA_ANTHROPIC_API_KEY"),
+		"AA_CLOUDFLARE_API_TOKEN":  os.Getenv("AA_CLOUDFLARE_API_TOKEN"),
 		"AA_CLOUDFLARE_ACCOUNT_ID": os.Getenv("AA_CLOUDFLARE_ACCOUNT_ID"),
-		"AA_EXA_API_KEY":          os.Getenv("AA_EXA_API_KEY"),
-		"AA_X_BEARER_TOKEN":       os.Getenv("AA_X_BEARER_TOKEN"),
-		"AA_ELEVENLABS_API_KEY":   os.Getenv("AA_ELEVENLABS_API_KEY"),
+		"AA_EXA_API_KEY":           os.Getenv("AA_EXA_API_KEY"),
+		"AA_X_BEARER_TOKEN":        os.Getenv("AA_X_BEARER_TOKEN"),
+		"AA_ELEVENLABS_API_KEY":    os.Getenv("AA_ELEVENLABS_API_KEY"),
 	}
 
 	var missing []string

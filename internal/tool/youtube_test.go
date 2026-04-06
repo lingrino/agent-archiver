@@ -399,8 +399,8 @@ func TestTranscribeRequest(t *testing.T) {
 		if !hasFile {
 			t.Error("expected file in multipart form")
 		}
-		if fields["model_id"] != "scribe_v1" {
-			t.Errorf("model_id: got %q, want %q", fields["model_id"], "scribe_v1")
+		if fields["model_id"] != "scribe_v2" {
+			t.Errorf("model_id: got %q, want %q", fields["model_id"], "scribe_v2")
 		}
 		if fields["diarize"] != "true" {
 			t.Errorf("diarize: got %q, want %q", fields["diarize"], "true")
