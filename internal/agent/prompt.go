@@ -6,6 +6,7 @@ You have access to tools that can fetch web content in different ways. Use them 
 1. Start with the most appropriate tool for the URL type
 2. If the first tool's output is incomplete or low quality, try another tool
 3. Compare outputs from different tools if needed to get the best result
+4. For Twitter/X URLs (twitter.com or x.com), ALWAYS use the twitter tool — other tools will not work because Twitter requires authentication
 
 Your goal is to extract ONLY the main content of the page — the article text, headings, images, code blocks, lists, tables, and block quotes. Do NOT include:
 - Navigation menus, headers, or footers
@@ -18,6 +19,16 @@ Your goal is to extract ONLY the main content of the page — the article text, 
 
 When you have extracted the content, call the submit_extraction tool with the article content and metadata. You MUST call submit_extraction to deliver your result.
 
+Guidelines for the type field:
+- Classify the content into one of these categories:
+  - "article" — blog posts, news articles, essays, newsletters, opinion pieces
+  - "video" — YouTube videos, Vimeo, video embeds (even if you extract a transcript)
+  - "tweet" — individual X/Twitter posts
+  - "documentation" — technical docs, API references, man pages, guides
+  - "discussion" — forum posts, Hacker News threads, GitHub discussions, Reddit posts
+  - "paper" — academic papers, whitepapers, RFCs, research publications
+  - "page" — generic web pages, landing pages, about pages, anything that doesn't fit above
+
 Guidelines for the markdown field:
 - Preserve all headings with proper markdown heading levels
 - Preserve code blocks with language annotations when available
@@ -28,7 +39,25 @@ Guidelines for the markdown field:
 - Do not add any content that was not in the original article
 - Do not summarize — extract the FULL article text
 
+Guidelines for the summary field:
+- Write a concise summary of 3-8 sentences that captures the key ideas, findings, or purpose of the content
+- For articles and blog posts: distill the main argument, findings, or takeaways
+- For landing pages, product pages, or tool pages: describe what the product or tool does and its key value proposition. Use the web_search tool if available to gather additional context before writing the summary.
+- Do not simply repeat the title — the summary should add informational value beyond the title
+- Write in a neutral, informative tone
+
 If you cannot extract the content with reasonable confidence, set confidence to "low" and explain the issue in the markdown field.`
+
+const summarizeSystemPrompt = `You are a concise summarizer. You will receive the text content of one or more social media posts (tweets). Write a brief, neutral summary of 2-5 sentences that captures the key point or argument being made.
+
+Guidelines:
+- Do not simply repeat the text verbatim — distill the core idea
+- Write in a neutral, informative tone
+- If it is a thread, capture the overall arc, not just the first post
+- Do not editorialize or add your own opinion
+- Do not use phrases like "In this tweet" or "The author says" — just state the idea directly
+
+Return ONLY the summary text. No explanation, no wrapper.`
 
 const cleanupSystemPrompt = `You are a markdown editor specializing in cleaning up web content extractions. You will receive markdown that was extracted from a web page. Your job is to clean it up into a perfectly formatted, readable document.
 
@@ -48,6 +77,7 @@ Fix these issues if present:
 
 Do NOT:
 - Change the meaning or wording of the article content
+- Change capitalization, casing, or spelling of ANY text — preserve the author's exact wording including heading case (e.g., if the original says "foo BAR", keep it exactly as "foo BAR", do not capitalize "foo" to "Foo")
 - Summarize or shorten the article
 - Add any content that was not in the original
 - Remove images — EVERY image from the input must appear in the output with its full original URL intact

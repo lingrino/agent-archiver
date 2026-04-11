@@ -2,6 +2,9 @@
 agent-archiver
 *.exe
 
+# GoReleaser
+/dist/
+
 # Archive output
 /archive/
 

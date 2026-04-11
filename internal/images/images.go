@@ -22,11 +22,18 @@ var (
 	htmlImageRe = regexp.MustCompile(`<img[^>]+src=["']([^"']+)["']`)
 )
 
+// imageRef pairs the URL as it appears in the markdown with the resolved absolute URL.
+type imageRef struct {
+	original string // as it appears in the markdown text
+	resolved string // absolute URL for downloading
+}
+
 // ProcessMarkdown finds all image URLs in markdown, downloads them to imageDir,
-// and rewrites the markdown to use relative paths.
-func ProcessMarkdown(ctx context.Context, markdown string, imageDir string) (string, error) {
-	urls := extractImageURLs(markdown)
-	if len(urls) == 0 {
+// and rewrites the markdown to use relative paths. baseURL is the source page URL
+// used to resolve relative image paths.
+func ProcessMarkdown(ctx context.Context, markdown string, imageDir string, baseURL string) (string, error) {
+	refs := extractImageURLs(markdown, baseURL)
+	if len(refs) == 0 {
 		return markdown, nil
 	}
 
@@ -38,9 +45,9 @@ func ProcessMarkdown(ctx context.Context, markdown string, imageDir string) (str
 
 	// Download images concurrently with a limit
 	type result struct {
-		originalURL string
-		filename    string
-		err         error
+		ref      imageRef
+		filename string
+		err      error
 	}
 
 	var (
@@ -51,60 +58,78 @@ func ProcessMarkdown(ctx context.Context, markdown string, imageDir string) (str
 	)
 
 	seen := make(map[string]bool)
-	for _, imgURL := range urls {
-		if seen[imgURL] {
+	for _, ref := range refs {
+		if seen[ref.resolved] {
 			continue
 		}
-		seen[imgURL] = true
+		seen[ref.resolved] = true
 
 		wg.Add(1)
-		go func(imgURL string) {
+		go func(ref imageRef) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			filename, err := downloadImage(ctx, client, imgURL, imageDir)
+			filename, err := downloadImage(ctx, client, ref.resolved, imageDir)
 			mu.Lock()
-			results = append(results, result{originalURL: imgURL, filename: filename, err: err})
+			results = append(results, result{ref: ref, filename: filename, err: err})
 			mu.Unlock()
-		}(imgURL)
+		}(ref)
 	}
 	wg.Wait()
 
-	// Build replacement map and rewrite markdown
+	// Build replacement map: original text → local path
 	replacements := make(map[string]string)
 	for _, r := range results {
 		if r.err != nil {
-			log.Printf("warning: failed to download image %s: %v", r.originalURL, r.err)
+			log.Printf("warning: failed to download image %s: %v", r.ref.resolved, r.err)
 			continue
 		}
-		replacements[r.originalURL] = "./" + r.filename
+		replacements[r.ref.original] = "./" + r.filename
 	}
 
 	return rewriteImagePaths(markdown, replacements), nil
 }
 
-func extractImageURLs(markdown string) []string {
-	var urls []string
+func extractImageURLs(markdown string, baseURL string) []imageRef {
+	var refs []imageRef
 	seen := make(map[string]bool)
+
+	base, _ := url.Parse(baseURL)
+
+	// resolveURL turns a possibly-relative URL into an absolute one.
+	resolveURL := func(raw string) string {
+		if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+			return raw
+		}
+		if base == nil {
+			return raw
+		}
+		ref, err := url.Parse(raw)
+		if err != nil {
+			return raw
+		}
+		return base.ResolveReference(ref).String()
+	}
+
+	addRef := func(original string) {
+		resolved := resolveURL(original)
+		if isDownloadableURL(resolved) && !seen[original] {
+			refs = append(refs, imageRef{original: original, resolved: resolved})
+			seen[original] = true
+		}
+	}
 
 	// Parse ![alt](url) with balanced parentheses support
 	for _, u := range extractMarkdownImageURLs(markdown) {
-		if isDownloadableURL(u) && !seen[u] {
-			urls = append(urls, u)
-			seen[u] = true
-		}
+		addRef(u)
 	}
 
 	for _, match := range htmlImageRe.FindAllStringSubmatch(markdown, -1) {
-		u := match[1]
-		if isDownloadableURL(u) && !seen[u] {
-			urls = append(urls, u)
-			seen[u] = true
-		}
+		addRef(match[1])
 	}
 
-	return urls
+	return refs
 }
 
 // extractMarkdownImageURLs parses ![alt](url) patterns handling balanced parentheses in URLs.
@@ -221,7 +246,7 @@ func tryDownload(ctx context.Context, client *http.Client, imgURL string, imageD
 	if err != nil {
 		return "", imgURL, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", imgURL, fmt.Errorf("HTTP %d", resp.StatusCode)
@@ -234,10 +259,10 @@ func tryDownload(ctx context.Context, client *http.Client, imgURL string, imageD
 	if err != nil {
 		return "", imgURL, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if _, err := io.Copy(f, io.LimitReader(resp.Body, 50*1024*1024)); err != nil {
-		os.Remove(outPath)
+		_ = os.Remove(outPath)
 		return "", imgURL, err
 	}
 
