@@ -47,9 +47,6 @@ func main() {
 	cfg.Model = model
 	cfg.Verbose = verbose
 
-	if !tool.TrafilaturaAvailable() {
-		log.Fatalf("trafilatura is required but was not found in PATH")
-	}
 	if !tool.YtDlpAvailable() {
 		log.Fatalf("yt-dlp is required but was not found in PATH")
 	}
@@ -185,6 +182,5 @@ func buildRegistry(cfg *config.Config) *tool.Registry {
 		tool.NewCloudflareMarkdown(cfg.CloudflareAPIToken, cfg.CloudflareAccountID),
 		tool.NewExaSearch(cfg.ExaAPIKey),
 		tool.NewTwitter(cfg.XBearerToken),
-		tool.NewTrafilatura(),
 	)
 }
