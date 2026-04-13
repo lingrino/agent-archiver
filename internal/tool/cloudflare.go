@@ -103,9 +103,10 @@ func (t *CloudflareMarkdown) Name() string { return "cloudflare_markdown" }
 
 func (t *CloudflareMarkdown) Description() string {
 	return "Fetch the content of a web page as markdown using Cloudflare Browser Rendering. " +
-		"This tool renders the page in a headless browser and converts it to markdown format. " +
-		"The output may still contain some navigation and non-content elements, but is generally " +
-		"cleaner than raw HTML. This is a good first choice for extracting article content."
+		"This tool renders the page in a headless browser and converts it to markdown format, " +
+		"preserving images, links, and other media. The output may still contain some navigation " +
+		"and non-content elements, but is generally cleaner than raw HTML. This should be your " +
+		"first choice for extracting article content."
 }
 
 func (t *CloudflareMarkdown) InputSchema() anthropic.ToolInputSchemaParam {
