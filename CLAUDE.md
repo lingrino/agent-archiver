@@ -14,7 +14,7 @@ golangci-lint run
 ## Architecture
 
 Two-phase agent pipeline:
-1. **Extraction** — agent uses tools (http_fetch, cloudflare, trafilatura) to get raw content
+1. **Extraction** — agent uses tools (http_fetch, cloudflare) to get raw content
 2. **Cleanup** — single LLM call cleans the markdown
 
 YouTube and Twitter URLs bypass the agent pipeline with dedicated handlers.
@@ -35,5 +35,4 @@ All environment variables are prefixed with `AA_`.
 - `AA_EXA_API_KEY` (required)
 - `AA_X_BEARER_TOKEN` (required)
 - `AA_ELEVENLABS_API_KEY` (required)
-- Trafilatura: required, must be in PATH
 - yt-dlp + ffmpeg: required, must be in PATH
