@@ -31,8 +31,9 @@ func (t *Trafilatura) Description() string {
 	return "Extract the main content of a web page as markdown using trafilatura. " +
 		"Trafilatura is specialized in extracting the main text content from web pages, " +
 		"stripping away navigation, ads, footers, and other boilerplate. It is very effective " +
-		"for articles and blog posts. The output is clean markdown with the article text, " +
-		"but may miss some formatting details like images or complex tables."
+		"for articles and blog posts. The output is clean markdown with the article text " +
+		"and image references. Use this as a fallback if cloudflare_markdown produces " +
+		"incomplete or low-quality results."
 }
 
 func (t *Trafilatura) InputSchema() anthropic.ToolInputSchemaParam {
@@ -45,7 +46,7 @@ func (t *Trafilatura) Execute(ctx context.Context, input json.RawMessage) (strin
 		return "", fmt.Errorf("invalid input: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "trafilatura", "-u", params.URL, "--markdown")
+	cmd := exec.CommandContext(ctx, "trafilatura", "-u", params.URL, "--markdown", "--images")
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
