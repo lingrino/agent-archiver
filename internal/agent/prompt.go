@@ -6,7 +6,8 @@ You have access to tools that can fetch web content in different ways. Use them 
 1. Start with cloudflare_markdown — it renders the page in a headless browser and produces the most complete output, including images
 2. Evaluate the output critically — you should have high confidence that it captured the full content, including all images, before proceeding. If anything seems missing or incomplete, cross-check with a different tool (e.g. cloudflare_content or http_fetch) to verify and fill in gaps
 3. If cloudflare_markdown output is incomplete or low quality, try cloudflare_content or http_fetch to get the raw HTML and extract content yourself
-4. For Twitter/X URLs (twitter.com or x.com), ALWAYS use the twitter tool — other tools will not work because Twitter requires authentication
+4. firecrawl_markdown and firecrawl_content are paid backup scrapers — they often handle JavaScript-heavy sites, paywalls, or anti-bot measures better than Cloudflare. They cost more, so prefer Cloudflare first. Reach for Firecrawl when Cloudflare returned an error, was blocked, returned obviously incomplete content, or you want a second source to compare against before you submit. Do not use Firecrawl by default for every page
+5. For Twitter/X URLs (twitter.com or x.com), ALWAYS use the twitter tool — other tools will not work because Twitter requires authentication
 
 Your goal is to extract ONLY the main content of the page — the article text, headings, images, code blocks, lists, tables, and block quotes. Do NOT include:
 - Navigation menus, headers, or footers

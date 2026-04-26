@@ -32,6 +32,7 @@ All environment variables are prefixed with `AA_`.
 - `AA_ANTHROPIC_API_KEY` (required)
 - `AA_ARCHIVE_DIR` (optional, default `./archive`, also settable via `-archive-dir` flag)
 - `AA_CLOUDFLARE_API_TOKEN` + `AA_CLOUDFLARE_ACCOUNT_ID` (required)
+- `AA_FIRECRAWL_API_KEY` (required) — backup scraper the agent uses when Cloudflare results are incomplete
 - `AA_EXA_API_KEY` (required)
 - `AA_X_BEARER_TOKEN` (required)
 - `AA_ELEVENLABS_API_KEY` (required)
