@@ -85,77 +85,59 @@ func callFirecrawl(ctx context.Context, client *http.Client, apiKey, baseURL, fo
 	}
 }
 
-// FirecrawlMarkdown fetches markdown via the Firecrawl /scrape endpoint.
-type FirecrawlMarkdown struct {
-	client  *http.Client
-	apiKey  string
-	baseURL string
+// Firecrawl fetches a web page via the Firecrawl /scrape endpoint in either
+// markdown or html format. Construct via NewFirecrawlMarkdown or NewFirecrawlContent.
+type Firecrawl struct {
+	client      *http.Client
+	apiKey      string
+	baseURL     string
+	name        string
+	description string
+	format      string
 }
 
-func NewFirecrawlMarkdown(apiKey string) *FirecrawlMarkdown {
-	return &FirecrawlMarkdown{
+func NewFirecrawlMarkdown(apiKey string) *Firecrawl {
+	return &Firecrawl{
 		client:  &http.Client{Timeout: 90 * time.Second},
 		apiKey:  apiKey,
 		baseURL: firecrawlBaseURL,
+		name:    "firecrawl_markdown",
+		description: "Fetch the content of a web page as markdown using Firecrawl, a paid scraping " +
+			"service that handles JavaScript rendering, anti-bot measures, and complex layouts. " +
+			"This is a more expensive backup option — prefer cloudflare_markdown first. Use " +
+			"firecrawl_markdown when cloudflare output is incomplete, missing significant content " +
+			"or images, blocked, or you want a second source to compare against. Returns clean " +
+			"markdown with images and links preserved.",
+		format: "markdown",
 	}
 }
 
-func (t *FirecrawlMarkdown) Name() string { return "firecrawl_markdown" }
-
-func (t *FirecrawlMarkdown) Description() string {
-	return "Fetch the content of a web page as markdown using Firecrawl, a paid scraping " +
-		"service that handles JavaScript rendering, anti-bot measures, and complex layouts. " +
-		"This is a more expensive backup option — prefer cloudflare_markdown first. Use " +
-		"firecrawl_markdown when cloudflare output is incomplete, missing significant content " +
-		"or images, blocked, or you want a second source to compare against. Returns clean " +
-		"markdown with images and links preserved."
+func NewFirecrawlContent(apiKey string) *Firecrawl {
+	return &Firecrawl{
+		client:  &http.Client{Timeout: 90 * time.Second},
+		apiKey:  apiKey,
+		baseURL: firecrawlBaseURL,
+		name:    "firecrawl_content",
+		description: "Fetch the processed HTML of a web page using Firecrawl, a paid scraping service " +
+			"that handles JavaScript rendering, anti-bot measures, and complex layouts. This is a " +
+			"more expensive backup option — prefer cloudflare_content first. Use firecrawl_content " +
+			"when cloudflare output is incomplete, blocked, or you need a second source to extract " +
+			"content from yourself. Returns HTML with boilerplate stripped.",
+		format: "html",
+	}
 }
 
-func (t *FirecrawlMarkdown) InputSchema() anthropic.ToolInputSchemaParam {
+func (t *Firecrawl) Name() string        { return t.name }
+func (t *Firecrawl) Description() string { return t.description }
+
+func (t *Firecrawl) InputSchema() anthropic.ToolInputSchemaParam {
 	return GenerateSchema[firecrawlInput]()
 }
 
-func (t *FirecrawlMarkdown) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+func (t *Firecrawl) Execute(ctx context.Context, input json.RawMessage) (string, error) {
 	var params firecrawlInput
 	if err := json.Unmarshal(input, &params); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
 	}
-	return callFirecrawl(ctx, t.client, t.apiKey, t.baseURL, "markdown", params.URL)
-}
-
-// FirecrawlContent fetches processed HTML via the Firecrawl /scrape endpoint.
-type FirecrawlContent struct {
-	client  *http.Client
-	apiKey  string
-	baseURL string
-}
-
-func NewFirecrawlContent(apiKey string) *FirecrawlContent {
-	return &FirecrawlContent{
-		client:  &http.Client{Timeout: 90 * time.Second},
-		apiKey:  apiKey,
-		baseURL: firecrawlBaseURL,
-	}
-}
-
-func (t *FirecrawlContent) Name() string { return "firecrawl_content" }
-
-func (t *FirecrawlContent) Description() string {
-	return "Fetch the processed HTML of a web page using Firecrawl, a paid scraping service " +
-		"that handles JavaScript rendering, anti-bot measures, and complex layouts. This is a " +
-		"more expensive backup option — prefer cloudflare_content first. Use firecrawl_content " +
-		"when cloudflare output is incomplete, blocked, or you need a second source to extract " +
-		"content from yourself. Returns HTML with boilerplate stripped."
-}
-
-func (t *FirecrawlContent) InputSchema() anthropic.ToolInputSchemaParam {
-	return GenerateSchema[firecrawlInput]()
-}
-
-func (t *FirecrawlContent) Execute(ctx context.Context, input json.RawMessage) (string, error) {
-	var params firecrawlInput
-	if err := json.Unmarshal(input, &params); err != nil {
-		return "", fmt.Errorf("invalid input: %w", err)
-	}
-	return callFirecrawl(ctx, t.client, t.apiKey, t.baseURL, "html", params.URL)
+	return callFirecrawl(ctx, t.client, t.apiKey, t.baseURL, t.format, params.URL)
 }

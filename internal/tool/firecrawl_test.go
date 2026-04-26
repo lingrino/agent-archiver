@@ -106,7 +106,7 @@ func TestFirecrawlMarkdownExecute(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var tool *FirecrawlMarkdown
+			var tool *Firecrawl
 			input := tt.giveInput
 
 			if tt.giveHandler != nil {
@@ -118,11 +118,9 @@ func TestFirecrawlMarkdownExecute(t *testing.T) {
 					apiKey = "test-key"
 				}
 
-				tool = &FirecrawlMarkdown{
-					client:  server.Client(),
-					apiKey:  apiKey,
-					baseURL: server.URL,
-				}
+				tool = NewFirecrawlMarkdown(apiKey)
+				tool.client = server.Client()
+				tool.baseURL = server.URL
 
 				if input == nil {
 					input, _ = json.Marshal(firecrawlInput{URL: "https://example.com/article"})
@@ -177,11 +175,9 @@ func TestFirecrawlContentExecute(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tool := &FirecrawlContent{
-		client:  server.Client(),
-		apiKey:  "test-key",
-		baseURL: server.URL,
-	}
+	tool := NewFirecrawlContent("test-key")
+	tool.client = server.Client()
+	tool.baseURL = server.URL
 	input, _ := json.Marshal(firecrawlInput{URL: "https://example.com"})
 	result, err := tool.Execute(context.Background(), input)
 	if err != nil {
