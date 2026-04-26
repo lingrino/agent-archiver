@@ -180,6 +180,8 @@ func buildRegistry(cfg *config.Config) *tool.Registry {
 		tool.NewGitHubReadme(),
 		tool.NewCloudflareContent(cfg.CloudflareAPIToken, cfg.CloudflareAccountID),
 		tool.NewCloudflareMarkdown(cfg.CloudflareAPIToken, cfg.CloudflareAccountID),
+		tool.NewFirecrawlMarkdown(cfg.FirecrawlAPIKey),
+		tool.NewFirecrawlContent(cfg.FirecrawlAPIKey),
 		tool.NewExaSearch(cfg.ExaAPIKey),
 		tool.NewTwitter(cfg.XBearerToken),
 	)
