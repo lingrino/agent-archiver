@@ -3,7 +3,7 @@ module github.com/lingrino/agent-archiver
 go 1.26.1
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.27.1
+	github.com/anthropics/anthropic-sdk-go v1.38.0
 	github.com/invopop/jsonschema v0.13.0
 	gopkg.in/yaml.v3 v3.0.1
 )

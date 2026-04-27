@@ -49,31 +49,46 @@ Guidelines for the summary field:
 
 If you cannot extract the content with reasonable confidence, set confidence to "low" and explain the issue in the markdown field.`
 
-const pdfMetadataSystemPrompt = `You are extracting metadata from a PDF document that has been converted to markdown.
+const pdfCleanupSystemPrompt = `You are reviewing a PDF that was converted to markdown by an automated parser. You have access to the original PDF and the parser's markdown output. Your job is to produce the final cleaned-up markdown along with the document's metadata.
 
-You will receive the markdown content of a PDF (which may be truncated for very long documents). Identify the document's title, author(s), publication date, and produce a concise summary.
+You will receive:
+1. The original PDF as an attached document
+2. The parser's markdown output (which may have errors, missing content, or misplaced figures)
+3. A list of figure image URLs extracted by the parser, each with an optional caption and page number
 
-Guidelines for the title field:
-- Use the document's actual title as it appears (typically near the start of the document)
-- Do not include subtitles unless they are part of a single-line title
-- If no clear title is present, use a short descriptive label
+Your output must include:
+- markdown: the final, cleaned-up markdown of the document
+- title, author, date, summary: metadata for the archive frontmatter
 
-Guidelines for the author field:
-- Use the author's name(s) as they appear in the document
-- For multiple authors, comma-separate them (e.g., "Jane Doe, John Smith")
-- If no author is found, return an empty string
+Formatting rules for the markdown field:
+- Use proper markdown heading levels matching the document's structural hierarchy (start at # for the title)
+- Preserve paragraphs, lists (ordered and unordered), block quotes, and tables
+- Format tables as markdown tables when they fit; preserve complex tables as faithfully as possible
+- Preserve code blocks with language annotations when the language is obvious
+- Preserve every hyperlink in the source as proper markdown link syntax [text](url) — keep the link's anchor text and target exactly; never drop a link or replace it with bare text
+- Preserve bold, italic, and other inline formatting where present
+- Render mathematical equations using LaTeX-style markdown ($...$ for inline, $$...$$ for display); preserve symbols, subscripts, and superscripts exactly
+- Insert each provided figure image at the position in the document where it actually appears in the PDF, as ![caption](url) using the caption from the figure list (or a short descriptor like "Figure" if the caption is empty). Use the original presigned URL exactly as given. NEVER replace a figure with a prose description of what the figure shows.
+- Preserve footnotes and endnotes; reference them with markdown footnote syntax where possible
+- Use clean, readable markdown formatting throughout, with at most one blank line between paragraphs
 
-Guidelines for the date field:
-- Format as YYYY-MM-DD whenever possible
-- If only a year or year+month is given, use YYYY or YYYY-MM
-- If no publication date is found, return an empty string
+Do NOT:
+- Change the meaning, wording, or order of any content
+- Change capitalization, casing, or spelling of any text — preserve the original exactly, including heading and title case
+- Summarize, shorten, paraphrase, or omit any substantive content — the markdown must contain the FULL document text
+- Add any commentary, content, or text that was not in the original document
+- Repeat running page headers, page footers, or page numbers that recur on every page (include them once or omit them)
+- Include watermarks, navigation, or other non-content artifacts
 
-Guidelines for the summary field:
-- Write a concise summary of 3-8 sentences capturing the document's key ideas, findings, or arguments
-- Do not simply restate the title — add informational value
-- Write in a neutral, informative tone
+Use the original PDF as the source of truth. Where the parser's markdown disagrees with the PDF — missing text, dropped formatting, hallucinated paraphrase of a figure, garbled equation — fix it against the PDF.
 
-You MUST call the submit_pdf_metadata tool with your result.`
+Guidelines for the metadata fields:
+- title: the document's actual title from its title page or first heading
+- author: author name(s) as they appear; comma-separate multiple authors; empty string if none
+- date: publication date in YYYY-MM-DD when possible; YYYY-MM or YYYY if only partial; empty string if absent
+- summary: 3-8 neutral sentences capturing the document's key ideas; do not restate the title
+
+Return your result as a single JSON object matching the required schema.`
 
 const summarizeSystemPrompt = `You are a concise summarizer. You will receive the text content of one or more social media posts (tweets). Write a brief, neutral summary of 2-5 sentences that captures the key point or argument being made.
 

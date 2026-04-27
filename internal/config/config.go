@@ -16,6 +16,7 @@ type Config struct {
 	ElevenLabsAPIKey    string
 	ArchiveDir          string
 	Model               string
+	CleanupModel        string
 	Verbose             bool
 }
 
@@ -46,6 +47,11 @@ func Load() (*Config, error) {
 		archiveDir = v
 	}
 
+	cleanupModel := "claude-opus-4-7"
+	if v := os.Getenv("AA_CLEANUP_MODEL"); v != "" {
+		cleanupModel = v
+	}
+
 	return &Config{
 		AnthropicAPIKey:     required["AA_ANTHROPIC_API_KEY"],
 		CloudflareAPIToken:  required["AA_CLOUDFLARE_API_TOKEN"],
@@ -57,5 +63,6 @@ func Load() (*Config, error) {
 		ElevenLabsAPIKey:    required["AA_ELEVENLABS_API_KEY"],
 		ArchiveDir:          archiveDir,
 		Model:               "claude-sonnet-4-6",
+		CleanupModel:        cleanupModel,
 	}, nil
 }

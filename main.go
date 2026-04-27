@@ -26,13 +26,15 @@ func main() {
 	}
 
 	var (
-		archiveDir string
-		model      string
-		verbose    bool
+		archiveDir   string
+		model        string
+		cleanupModel string
+		verbose      bool
 	)
 
 	flag.StringVar(&archiveDir, "archive-dir", cfg.ArchiveDir, "output directory for archived content (env: AA_ARCHIVE_DIR)")
-	flag.StringVar(&model, "model", cfg.Model, "Claude model to use")
+	flag.StringVar(&model, "model", cfg.Model, "Claude model for the agent loop and per-archive summaries")
+	flag.StringVar(&cleanupModel, "cleanup-model", cfg.CleanupModel, "Claude model for the final cleanup pass (env: AA_CLEANUP_MODEL)")
 	flag.BoolVar(&verbose, "verbose", false, "enable verbose logging")
 	flag.Parse()
 
@@ -45,6 +47,7 @@ func main() {
 
 	cfg.ArchiveDir = archiveDir
 	cfg.Model = model
+	cfg.CleanupModel = cleanupModel
 	cfg.Verbose = verbose
 
 	if !tool.YtDlpAvailable() {
@@ -111,13 +114,13 @@ func main() {
 			Domain:  domain,
 			Slug:    slug,
 		}
-	} else if tool.IsPDFURL(targetURL) {
+	} else if tool.IsPDF(ctx, targetURL) {
 		if cfg.Verbose {
 			log.Printf("detected PDF URL, downloading and parsing via Reducto")
 		}
 
 		domain := archive.DomainFromURL(targetURL)
-		slug := archive.SlugFromURL(tool.StripPDFExtension(targetURL))
+		slug := tool.PDFSlug(targetURL)
 		pdfArchiveDir := filepath.Join(archiveDir, domain, slug)
 
 		red := tool.NewReducto(cfg.ReductoAPIKey)
@@ -129,24 +132,24 @@ func main() {
 		}
 
 		if cfg.Verbose {
-			log.Printf("extracting metadata via LLM")
+			log.Printf("running LLM cleanup pass with original PDF as ground truth")
 		}
-		meta, metaErr := a.ExtractPDFMetadata(ctx, pdfResult.Markdown)
-		if metaErr != nil {
-			log.Fatalf("pdf metadata extraction failed: %v", metaErr)
+		cleaned, cleanupErr := a.CleanupPDF(ctx, pdfResult.Markdown, pdfResult.Figures, pdfResult.PDFPath)
+		if cleanupErr != nil {
+			log.Fatalf("pdf cleanup failed: %v", cleanupErr)
 		}
 
 		result = &archive.Archive{
 			Metadata: archive.Metadata{
-				Title:        meta.Title,
-				Author:       meta.Author,
-				Date:         meta.Date,
+				Title:        cleaned.Title,
+				Author:       cleaned.Author,
+				Date:         cleaned.Date,
 				Type:         archive.TypePaper,
-				Summary:      meta.Summary,
+				Summary:      cleaned.Summary,
 				URL:          targetURL,
 				DownloadedAt: time.Now().UTC(),
 			},
-			Content: pdfResult.Markdown,
+			Content: cleaned.Markdown,
 			Domain:  domain,
 			Slug:    slug,
 		}
