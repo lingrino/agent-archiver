@@ -134,9 +134,17 @@ func main() {
 		if cfg.Verbose {
 			log.Printf("running LLM cleanup pass with original PDF as ground truth")
 		}
-		cleaned, cleanupErr := a.CleanupPDF(ctx, pdfResult.Markdown, pdfResult.Figures, pdfResult.PDFPath)
+		cleaned, usage, cleanupErr := a.CleanupPDF(ctx, pdfResult.Markdown, pdfResult.Figures, pdfResult.PDFPath)
 		if cleanupErr != nil {
 			log.Fatalf("pdf cleanup failed: %v", cleanupErr)
+		}
+
+		if cfg.Verbose {
+			log.Printf("tokens: %d input, %d output", usage.InputTokens, usage.OutputTokens)
+			if usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0 {
+				log.Printf("cache: %d read, %d creation", usage.CacheReadInputTokens, usage.CacheCreationInputTokens)
+			}
+			log.Printf("estimated cleanup cost: $%.4f", usage.Cost(cleanupModel))
 		}
 
 		result = &archive.Archive{

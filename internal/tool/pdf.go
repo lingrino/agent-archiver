@@ -160,9 +160,16 @@ func (r *Reducto) downloadPDF(ctx context.Context, rawURL, outPath string) error
 	}
 	defer func() { _ = out.Close() }()
 
-	if _, err := io.Copy(out, io.LimitReader(resp.Body, pdfMaxBytes)); err != nil {
+	// Read one byte beyond the limit so we can detect a truncated download:
+	// if Copy stops at exactly pdfMaxBytes, the source was at-or-over the cap.
+	n, err := io.Copy(out, io.LimitReader(resp.Body, pdfMaxBytes+1))
+	if err != nil {
 		_ = os.Remove(outPath)
 		return fmt.Errorf("writing file: %w", err)
+	}
+	if n > pdfMaxBytes {
+		_ = os.Remove(outPath)
+		return fmt.Errorf("PDF exceeds %d MB size limit", pdfMaxBytes/(1024*1024))
 	}
 	return nil
 }
@@ -281,16 +288,18 @@ func (r *Reducto) fetchURLResult(ctx context.Context, resultURL string) (string,
 	}
 
 	var direct reductoParseResult
-	if err := json.Unmarshal(body, &direct); err == nil && len(direct.Chunks) > 0 {
+	directErr := json.Unmarshal(body, &direct)
+	if directErr == nil && len(direct.Chunks) > 0 {
 		return collectChunks(direct.Chunks)
 	}
 
 	var wrapped reductoParseResponse
-	if err := json.Unmarshal(body, &wrapped); err == nil && len(wrapped.Result.Chunks) > 0 {
+	wrappedErr := json.Unmarshal(body, &wrapped)
+	if wrappedErr == nil && len(wrapped.Result.Chunks) > 0 {
 		return collectChunks(wrapped.Result.Chunks)
 	}
 
-	return "", nil, fmt.Errorf("could not parse url-type result")
+	return "", nil, fmt.Errorf("could not parse url-type result (direct: %v, wrapped: %v)", directErr, wrappedErr)
 }
 
 func collectChunks(chunks []reductoChunk) (string, []PDFFigure, error) {

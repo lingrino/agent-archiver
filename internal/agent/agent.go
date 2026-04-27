@@ -250,11 +250,13 @@ type PDFCleanup struct {
 
 // CleanupPDF runs a final review pass over the parser's markdown using the
 // original PDF as ground truth. The LLM fixes extraction errors, places figure
-// images at their correct positions, and returns finalized markdown + metadata.
-func (a *Agent) CleanupPDF(ctx context.Context, markdown string, figures []tool.PDFFigure, pdfPath string) (*PDFCleanup, error) {
+// images at their correct positions, and returns finalized markdown + metadata
+// along with the API token usage for cost reporting.
+func (a *Agent) CleanupPDF(ctx context.Context, markdown string, figures []tool.PDFFigure, pdfPath string) (*PDFCleanup, *Usage, error) {
+	var usage Usage
 	pdfBytes, err := os.ReadFile(pdfPath)
 	if err != nil {
-		return nil, fmt.Errorf("reading PDF: %w", err)
+		return nil, &usage, fmt.Errorf("reading PDF: %w", err)
 	}
 	pdfData := base64.StdEncoding.EncodeToString(pdfBytes)
 
@@ -309,14 +311,15 @@ func (a *Agent) CleanupPDF(ctx context.Context, markdown string, figures []tool.
 	for stream.Next() {
 		event := stream.Current()
 		if err := msg.Accumulate(event); err != nil {
-			return nil, fmt.Errorf("accumulating PDF cleanup stream: %w", err)
+			return nil, &usage, fmt.Errorf("accumulating PDF cleanup stream: %w", err)
 		}
 	}
 	if err := stream.Err(); err != nil {
-		return nil, fmt.Errorf("streaming PDF cleanup: %w", err)
+		return nil, &usage, fmt.Errorf("streaming PDF cleanup: %w", err)
 	}
+	usage.add(&msg)
 	if msg.StopReason == anthropic.StopReasonMaxTokens {
-		return nil, fmt.Errorf("PDF cleanup truncated by max_tokens (%d) before completion — output is incomplete; raise the budget or split the document", cleanupMaxTokens)
+		return nil, &usage, fmt.Errorf("PDF cleanup truncated by max_tokens (%d) before completion — output is incomplete; raise the budget or split the document", cleanupMaxTokens)
 	}
 
 	for _, block := range msg.Content {
@@ -325,15 +328,15 @@ func (a *Agent) CleanupPDF(ctx context.Context, markdown string, figures []tool.
 		}
 		var result PDFCleanup
 		if err := json.Unmarshal([]byte(block.Text), &result); err != nil {
-			return nil, fmt.Errorf("parsing PDF cleanup JSON: %w", err)
+			return nil, &usage, fmt.Errorf("parsing PDF cleanup JSON: %w", err)
 		}
 		if result.Markdown == "" {
-			return nil, fmt.Errorf("LLM returned empty markdown")
+			return nil, &usage, fmt.Errorf("LLM returned empty markdown")
 		}
-		return &result, nil
+		return &result, &usage, nil
 	}
 
-	return nil, fmt.Errorf("LLM did not return PDF cleanup result")
+	return nil, &usage, fmt.Errorf("LLM did not return PDF cleanup result")
 }
 
 // Summarize generates a concise summary of the given content.
