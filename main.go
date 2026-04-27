@@ -111,6 +111,45 @@ func main() {
 			Domain:  domain,
 			Slug:    slug,
 		}
+	} else if tool.IsPDFURL(targetURL) {
+		if cfg.Verbose {
+			log.Printf("detected PDF URL, downloading and parsing via Reducto")
+		}
+
+		domain := archive.DomainFromURL(targetURL)
+		slug := archive.SlugFromURL(tool.StripPDFExtension(targetURL))
+		pdfArchiveDir := filepath.Join(archiveDir, domain, slug)
+
+		red := tool.NewReducto(cfg.ReductoAPIKey)
+		red.SetVerbose(cfg.Verbose)
+
+		pdfResult, fetchErr := red.Fetch(ctx, targetURL, pdfArchiveDir)
+		if fetchErr != nil {
+			log.Fatalf("pdf fetch failed: %v", fetchErr)
+		}
+
+		if cfg.Verbose {
+			log.Printf("extracting metadata via LLM")
+		}
+		meta, metaErr := a.ExtractPDFMetadata(ctx, pdfResult.Markdown)
+		if metaErr != nil {
+			log.Fatalf("pdf metadata extraction failed: %v", metaErr)
+		}
+
+		result = &archive.Archive{
+			Metadata: archive.Metadata{
+				Title:        meta.Title,
+				Author:       meta.Author,
+				Date:         meta.Date,
+				Type:         archive.TypePaper,
+				Summary:      meta.Summary,
+				URL:          targetURL,
+				DownloadedAt: time.Now().UTC(),
+			},
+			Content: pdfResult.Markdown,
+			Domain:  domain,
+			Slug:    slug,
+		}
 	} else if tool.IsTweetURL(targetURL) {
 		if cfg.Verbose {
 			log.Printf("detected Twitter/X URL, fetching directly via API")

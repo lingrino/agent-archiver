@@ -5,4 +5,5 @@ a tool to save web content as markdown. focused on quality over performance or c
 - supports articles, blogs, and other generic web content through scraping tools
 - youtube videos are downloaded and transcribed with speaker identification
 - x.com links are supported through the api
+- pdfs are downloaded and parsed to markdown via reducto
 - all content is also summarized with an llm

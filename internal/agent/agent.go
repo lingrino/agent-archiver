@@ -227,6 +227,64 @@ func (a *Agent) extract(ctx context.Context, targetURL string, usage *Usage) (*e
 	return nil, fmt.Errorf("extraction loop exceeded %d iterations", maxIterations)
 }
 
+// PDFMetadata holds metadata extracted from a PDF's markdown content.
+type PDFMetadata struct {
+	Title   string `json:"title" jsonschema_description:"The document title"`
+	Author  string `json:"author" jsonschema_description:"Author name(s) if found, comma-separated, or empty string"`
+	Date    string `json:"date" jsonschema_description:"Publication date in YYYY-MM-DD format if found, or empty string"`
+	Summary string `json:"summary" jsonschema_description:"A concise summary of 3-8 sentences capturing the key ideas of the document"`
+}
+
+const submitPDFMetadataToolName = "submit_pdf_metadata"
+
+// ExtractPDFMetadata uses the LLM to extract title, author, date, and a summary
+// from PDF markdown content.
+func (a *Agent) ExtractPDFMetadata(ctx context.Context, markdown string) (*PDFMetadata, error) {
+	schema := tool.GenerateSchema[PDFMetadata]()
+	submit := anthropic.ToolUnionParam{
+		OfTool: &anthropic.ToolParam{
+			Name:        submitPDFMetadataToolName,
+			Description: anthropic.String("Submit the document's metadata and summary."),
+			InputSchema: schema,
+		},
+	}
+
+	const maxChars = 60000
+	content := markdown
+	if len(content) > maxChars {
+		content = content[:maxChars] + "\n\n[content truncated]"
+	}
+
+	msg, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     a.model,
+		MaxTokens: 2048,
+		System: []anthropic.TextBlockParam{
+			{Text: pdfMetadataSystemPrompt},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(content)),
+		},
+		Tools:      []anthropic.ToolUnionParam{submit},
+		ToolChoice: anthropic.ToolChoiceUnionParam{OfTool: &anthropic.ToolChoiceToolParam{Name: submitPDFMetadataToolName}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("calling LLM for PDF metadata: %w", err)
+	}
+
+	for _, block := range msg.Content {
+		if block.Type != "tool_use" || block.Name != submitPDFMetadataToolName {
+			continue
+		}
+		var result PDFMetadata
+		if err := json.Unmarshal(block.Input, &result); err != nil {
+			return nil, fmt.Errorf("parsing PDF metadata: %w", err)
+		}
+		return &result, nil
+	}
+
+	return nil, fmt.Errorf("LLM did not return PDF metadata")
+}
+
 // Summarize generates a concise summary of the given content.
 func (a *Agent) Summarize(ctx context.Context, content string) (string, error) {
 	msg, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{

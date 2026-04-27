@@ -17,7 +17,7 @@ Two-phase agent pipeline:
 1. **Extraction** — agent uses tools (http_fetch, cloudflare) to get raw content
 2. **Cleanup** — single LLM call cleans the markdown
 
-YouTube and Twitter URLs bypass the agent pipeline with dedicated handlers.
+YouTube, Twitter, and PDF URLs bypass the agent pipeline with dedicated handlers. PDFs are always parsed via Reducto.
 
 Key packages:
 - `internal/agent` — agent loop and prompts
@@ -33,6 +33,7 @@ All environment variables are prefixed with `AA_`.
 - `AA_ARCHIVE_DIR` (optional, default `./archive`, also settable via `-archive-dir` flag)
 - `AA_CLOUDFLARE_API_TOKEN` + `AA_CLOUDFLARE_ACCOUNT_ID` (required)
 - `AA_FIRECRAWL_API_KEY` (required) — backup scraper the agent uses when Cloudflare results are incomplete
+- `AA_REDUCTO_API_KEY` (required) — used to parse PDFs into markdown
 - `AA_EXA_API_KEY` (required)
 - `AA_X_BEARER_TOKEN` (required)
 - `AA_ELEVENLABS_API_KEY` (required)

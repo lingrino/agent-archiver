@@ -49,6 +49,32 @@ Guidelines for the summary field:
 
 If you cannot extract the content with reasonable confidence, set confidence to "low" and explain the issue in the markdown field.`
 
+const pdfMetadataSystemPrompt = `You are extracting metadata from a PDF document that has been converted to markdown.
+
+You will receive the markdown content of a PDF (which may be truncated for very long documents). Identify the document's title, author(s), publication date, and produce a concise summary.
+
+Guidelines for the title field:
+- Use the document's actual title as it appears (typically near the start of the document)
+- Do not include subtitles unless they are part of a single-line title
+- If no clear title is present, use a short descriptive label
+
+Guidelines for the author field:
+- Use the author's name(s) as they appear in the document
+- For multiple authors, comma-separate them (e.g., "Jane Doe, John Smith")
+- If no author is found, return an empty string
+
+Guidelines for the date field:
+- Format as YYYY-MM-DD whenever possible
+- If only a year or year+month is given, use YYYY or YYYY-MM
+- If no publication date is found, return an empty string
+
+Guidelines for the summary field:
+- Write a concise summary of 3-8 sentences capturing the document's key ideas, findings, or arguments
+- Do not simply restate the title — add informational value
+- Write in a neutral, informative tone
+
+You MUST call the submit_pdf_metadata tool with your result.`
+
 const summarizeSystemPrompt = `You are a concise summarizer. You will receive the text content of one or more social media posts (tweets). Write a brief, neutral summary of 2-5 sentences that captures the key point or argument being made.
 
 Guidelines:
