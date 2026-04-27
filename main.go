@@ -26,13 +26,15 @@ func main() {
 	}
 
 	var (
-		archiveDir string
-		model      string
-		verbose    bool
+		archiveDir   string
+		model        string
+		cleanupModel string
+		verbose      bool
 	)
 
 	flag.StringVar(&archiveDir, "archive-dir", cfg.ArchiveDir, "output directory for archived content (env: AA_ARCHIVE_DIR)")
-	flag.StringVar(&model, "model", cfg.Model, "Claude model to use")
+	flag.StringVar(&model, "model", cfg.Model, "Claude model for the agent loop and per-archive summaries")
+	flag.StringVar(&cleanupModel, "cleanup-model", cfg.CleanupModel, "Claude model for the final cleanup pass (env: AA_CLEANUP_MODEL)")
 	flag.BoolVar(&verbose, "verbose", false, "enable verbose logging")
 	flag.Parse()
 
@@ -45,6 +47,7 @@ func main() {
 
 	cfg.ArchiveDir = archiveDir
 	cfg.Model = model
+	cfg.CleanupModel = cleanupModel
 	cfg.Verbose = verbose
 
 	if !tool.YtDlpAvailable() {
@@ -108,6 +111,53 @@ func main() {
 				DownloadedAt: time.Now().UTC(),
 			},
 			Content: ytResult.Markdown,
+			Domain:  domain,
+			Slug:    slug,
+		}
+	} else if tool.IsPDF(ctx, targetURL) {
+		if cfg.Verbose {
+			log.Printf("detected PDF URL, downloading and parsing via Reducto")
+		}
+
+		domain := archive.DomainFromURL(targetURL)
+		slug := tool.PDFSlug(targetURL)
+		pdfArchiveDir := filepath.Join(archiveDir, domain, slug)
+
+		red := tool.NewReducto(cfg.ReductoAPIKey)
+		red.SetVerbose(cfg.Verbose)
+
+		pdfResult, fetchErr := red.Fetch(ctx, targetURL, pdfArchiveDir)
+		if fetchErr != nil {
+			log.Fatalf("pdf fetch failed: %v", fetchErr)
+		}
+
+		if cfg.Verbose {
+			log.Printf("running LLM cleanup pass with original PDF as ground truth")
+		}
+		cleaned, usage, cleanupErr := a.CleanupPDF(ctx, pdfResult.Markdown, pdfResult.Figures, pdfResult.PDFPath)
+		if cleanupErr != nil {
+			log.Fatalf("pdf cleanup failed: %v", cleanupErr)
+		}
+
+		if cfg.Verbose {
+			log.Printf("tokens: %d input, %d output", usage.InputTokens, usage.OutputTokens)
+			if usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0 {
+				log.Printf("cache: %d read, %d creation", usage.CacheReadInputTokens, usage.CacheCreationInputTokens)
+			}
+			log.Printf("estimated cleanup cost: $%.4f", usage.Cost(cleanupModel))
+		}
+
+		result = &archive.Archive{
+			Metadata: archive.Metadata{
+				Title:        cleaned.Title,
+				Author:       cleaned.Author,
+				Date:         cleaned.Date,
+				Type:         archive.TypePaper,
+				Summary:      cleaned.Summary,
+				URL:          targetURL,
+				DownloadedAt: time.Now().UTC(),
+			},
+			Content: cleaned.Markdown,
 			Domain:  domain,
 			Slug:    slug,
 		}

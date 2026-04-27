@@ -10,11 +10,13 @@ type Config struct {
 	CloudflareAPIToken  string
 	CloudflareAccountID string
 	FirecrawlAPIKey     string
+	ReductoAPIKey       string
 	ExaAPIKey           string
 	XBearerToken        string
 	ElevenLabsAPIKey    string
 	ArchiveDir          string
 	Model               string
+	CleanupModel        string
 	Verbose             bool
 }
 
@@ -24,6 +26,7 @@ func Load() (*Config, error) {
 		"AA_CLOUDFLARE_API_TOKEN":  os.Getenv("AA_CLOUDFLARE_API_TOKEN"),
 		"AA_CLOUDFLARE_ACCOUNT_ID": os.Getenv("AA_CLOUDFLARE_ACCOUNT_ID"),
 		"AA_FIRECRAWL_API_KEY":     os.Getenv("AA_FIRECRAWL_API_KEY"),
+		"AA_REDUCTO_API_KEY":       os.Getenv("AA_REDUCTO_API_KEY"),
 		"AA_EXA_API_KEY":           os.Getenv("AA_EXA_API_KEY"),
 		"AA_X_BEARER_TOKEN":        os.Getenv("AA_X_BEARER_TOKEN"),
 		"AA_ELEVENLABS_API_KEY":    os.Getenv("AA_ELEVENLABS_API_KEY"),
@@ -44,15 +47,22 @@ func Load() (*Config, error) {
 		archiveDir = v
 	}
 
+	cleanupModel := "claude-opus-4-7"
+	if v := os.Getenv("AA_CLEANUP_MODEL"); v != "" {
+		cleanupModel = v
+	}
+
 	return &Config{
 		AnthropicAPIKey:     required["AA_ANTHROPIC_API_KEY"],
 		CloudflareAPIToken:  required["AA_CLOUDFLARE_API_TOKEN"],
 		CloudflareAccountID: required["AA_CLOUDFLARE_ACCOUNT_ID"],
 		FirecrawlAPIKey:     required["AA_FIRECRAWL_API_KEY"],
+		ReductoAPIKey:       required["AA_REDUCTO_API_KEY"],
 		ExaAPIKey:           required["AA_EXA_API_KEY"],
 		XBearerToken:        required["AA_X_BEARER_TOKEN"],
 		ElevenLabsAPIKey:    required["AA_ELEVENLABS_API_KEY"],
 		ArchiveDir:          archiveDir,
 		Model:               "claude-sonnet-4-6",
+		CleanupModel:        cleanupModel,
 	}, nil
 }

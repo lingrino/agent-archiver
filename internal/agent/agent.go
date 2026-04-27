@@ -2,9 +2,12 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -45,8 +48,10 @@ func (u *Usage) Cost(model string) float64 {
 // modelPricing returns (input, output) price per million tokens.
 func modelPricing(model string) (float64, float64) {
 	switch model {
+	case "claude-opus-4-7":
+		return 5.0, 25.0
 	case "claude-opus-4-6", "claude-opus-4-20250918":
-		return 15.0, 75.0
+		return 5.0, 25.0
 	case "claude-sonnet-4-6", "claude-sonnet-4-20250514":
 		return 3.0, 15.0
 	case "claude-haiku-4-5-20251001":
@@ -57,19 +62,25 @@ func modelPricing(model string) (float64, float64) {
 }
 
 type Agent struct {
-	client   *anthropic.Client
-	registry *tool.Registry
-	model    anthropic.Model
-	verbose  bool
+	client       *anthropic.Client
+	registry     *tool.Registry
+	model        anthropic.Model
+	cleanupModel anthropic.Model
+	verbose      bool
 }
 
 func New(cfg *config.Config, registry *tool.Registry) *Agent {
 	client := anthropic.NewClient(option.WithAPIKey(cfg.AnthropicAPIKey))
+	cleanupModel := cfg.CleanupModel
+	if cleanupModel == "" {
+		cleanupModel = cfg.Model
+	}
 	return &Agent{
-		client:   &client,
-		registry: registry,
-		model:    anthropic.Model(cfg.Model),
-		verbose:  cfg.Verbose,
+		client:       &client,
+		registry:     registry,
+		model:        anthropic.Model(cfg.Model),
+		cleanupModel: anthropic.Model(cleanupModel),
+		verbose:      cfg.Verbose,
 	}
 }
 
@@ -227,6 +238,107 @@ func (a *Agent) extract(ctx context.Context, targetURL string, usage *Usage) (*e
 	return nil, fmt.Errorf("extraction loop exceeded %d iterations", maxIterations)
 }
 
+// PDFCleanup is the result of cleaning up a PDF's parsed markdown against the
+// original PDF document.
+type PDFCleanup struct {
+	Markdown string `json:"markdown" jsonschema_description:"The final cleaned-up markdown of the entire document, with figure images embedded at their correct positions"`
+	Title    string `json:"title" jsonschema_description:"The document title"`
+	Author   string `json:"author" jsonschema_description:"Author name(s) if found, comma-separated, or empty string"`
+	Date     string `json:"date" jsonschema_description:"Publication date in YYYY-MM-DD format (or YYYY-MM, YYYY) if found, or empty string"`
+	Summary  string `json:"summary" jsonschema_description:"A concise summary of 3-8 sentences capturing the key ideas of the document"`
+}
+
+// CleanupPDF runs a final review pass over the parser's markdown using the
+// original PDF as ground truth. The LLM fixes extraction errors, places figure
+// images at their correct positions, and returns finalized markdown + metadata
+// along with the API token usage for cost reporting.
+func (a *Agent) CleanupPDF(ctx context.Context, markdown string, figures []tool.PDFFigure, pdfPath string) (*PDFCleanup, *Usage, error) {
+	var usage Usage
+	pdfBytes, err := os.ReadFile(pdfPath)
+	if err != nil {
+		return nil, &usage, fmt.Errorf("reading PDF: %w", err)
+	}
+	pdfData := base64.StdEncoding.EncodeToString(pdfBytes)
+
+	var userText strings.Builder
+	userText.WriteString("Below is the parser's markdown output for the attached PDF. ")
+	userText.WriteString("Clean it up against the PDF, applying the formatting rules in the system prompt.\n\n")
+	userText.WriteString("Parser markdown:\n\n```\n")
+	userText.WriteString(markdown)
+	userText.WriteString("\n```\n")
+	if len(figures) > 0 {
+		userText.WriteString("\nFigure images extracted by the parser. Insert each one as ![caption](url) at the position in the document where it appears in the PDF:\n\n")
+		for i, f := range figures {
+			fmt.Fprintf(&userText, "%d. ", i+1)
+			if f.Page > 0 {
+				fmt.Fprintf(&userText, "(page %d) ", f.Page)
+			}
+			if f.Caption != "" {
+				fmt.Fprintf(&userText, "%q\n   ", f.Caption)
+			}
+			fmt.Fprintf(&userText, "URL: %s\n", f.URL)
+		}
+	}
+
+	pdfBlock := anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{Data: pdfData})
+	textBlock := anthropic.NewTextBlock(userText.String())
+
+	const cleanupMaxTokens = 65536
+	params := anthropic.MessageNewParams{
+		Model:     a.cleanupModel,
+		MaxTokens: cleanupMaxTokens,
+		Thinking: anthropic.ThinkingConfigParamUnion{
+			OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+		},
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortXhigh,
+			Format: anthropic.JSONOutputFormatParam{
+				Schema: tool.GenerateJSONSchema[PDFCleanup](),
+			},
+		},
+		System: []anthropic.TextBlockParam{
+			{Text: pdfCleanupSystemPrompt},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(pdfBlock, textBlock),
+		},
+	}
+
+	// Stream the response — required for max_tokens budgets that may take longer
+	// than the 10-minute non-streaming limit.
+	stream := a.client.Messages.NewStreaming(ctx, params)
+	var msg anthropic.Message
+	for stream.Next() {
+		event := stream.Current()
+		if err := msg.Accumulate(event); err != nil {
+			return nil, &usage, fmt.Errorf("accumulating PDF cleanup stream: %w", err)
+		}
+	}
+	if err := stream.Err(); err != nil {
+		return nil, &usage, fmt.Errorf("streaming PDF cleanup: %w", err)
+	}
+	usage.add(&msg)
+	if msg.StopReason == anthropic.StopReasonMaxTokens {
+		return nil, &usage, fmt.Errorf("PDF cleanup truncated by max_tokens (%d) before completion — output is incomplete; raise the budget or split the document", cleanupMaxTokens)
+	}
+
+	for _, block := range msg.Content {
+		if block.Type != "text" {
+			continue
+		}
+		var result PDFCleanup
+		if err := json.Unmarshal([]byte(block.Text), &result); err != nil {
+			return nil, &usage, fmt.Errorf("parsing PDF cleanup JSON: %w", err)
+		}
+		if result.Markdown == "" {
+			return nil, &usage, fmt.Errorf("LLM returned empty markdown")
+		}
+		return &result, &usage, nil
+	}
+
+	return nil, &usage, fmt.Errorf("LLM did not return PDF cleanup result")
+}
+
 // Summarize generates a concise summary of the given content.
 func (a *Agent) Summarize(ctx context.Context, content string) (string, error) {
 	msg, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
@@ -254,8 +366,14 @@ func (a *Agent) Summarize(ctx context.Context, content string) (string, error) {
 
 func (a *Agent) cleanup(ctx context.Context, markdown string, usage *Usage) (string, error) {
 	msg, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     a.model,
+		Model:     a.cleanupModel,
 		MaxTokens: 16384,
+		Thinking: anthropic.ThinkingConfigParamUnion{
+			OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+		},
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortXhigh,
+		},
 		System: []anthropic.TextBlockParam{
 			{Text: cleanupSystemPrompt},
 		},
@@ -267,6 +385,9 @@ func (a *Agent) cleanup(ctx context.Context, markdown string, usage *Usage) (str
 		return "", fmt.Errorf("calling cleanup: %w", err)
 	}
 	usage.add(msg)
+	if msg.StopReason == anthropic.StopReasonMaxTokens {
+		return "", fmt.Errorf("cleanup truncated by max_tokens (16384) before completion — output is incomplete; switch to streaming or shorten input")
+	}
 
 	for _, block := range msg.Content {
 		if block.Type == "text" {

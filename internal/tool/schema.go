@@ -26,3 +26,18 @@ func GenerateSchema[T any]() anthropic.ToolInputSchemaParam {
 		Required:   schema.Required,
 	}
 }
+
+// GenerateJSONSchema reflects a Go struct into a full JSON Schema map suitable
+// for use with anthropic.JSONOutputFormatParam (output_config.format). Unlike
+// GenerateSchema (which produces a tool input schema with no top-level "type"),
+// this returns an object schema ready to be sent directly as a structured
+// output format.
+func GenerateJSONSchema[T any]() map[string]any {
+	inner := GenerateSchema[T]()
+	return map[string]any{
+		"type":                 "object",
+		"properties":           inner.Properties,
+		"required":             inner.Required,
+		"additionalProperties": false,
+	}
+}
