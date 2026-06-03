@@ -168,8 +168,10 @@ func TestPDFSlug(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			t.Parallel()
-			if got := PDFSlug(tt.give); got != tt.want {
-				t.Errorf("PDFSlug(%q) = %q, want %q", tt.give, got, tt.want)
+			// want is the readable base; PDFSlug appends "-<8 hex hash of URL>".
+			want := tt.want + "-" + shortURLHash(tt.give)
+			if got := PDFSlug(tt.give); got != want {
+				t.Errorf("PDFSlug(%q) = %q, want %q", tt.give, got, want)
 			}
 		})
 	}

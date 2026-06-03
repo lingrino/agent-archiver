@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -19,7 +20,18 @@ import (
 
 const maxIterations = 20
 
+// maxRetries is how many times the Anthropic SDK retries transient failures
+// (429 rate limits, 5xx, connection errors) with exponential backoff before
+// giving up. The SDK default is 2, which is thin for large unattended batches.
+const maxRetries = 8
+
 const submitToolName = "submit_extraction"
+
+// ErrIncomplete signals that the full content could not be captured — the page
+// is paywalled, login-gated, truncated, or the agent had low confidence in the
+// extraction. Callers should treat this as a permanent skip (log it) rather
+// than archiving a partial/teaser copy or retrying.
+var ErrIncomplete = errors.New("content incomplete or paywalled")
 
 // Usage tracks cumulative token usage across all API calls.
 type Usage struct {
@@ -48,7 +60,7 @@ func (u *Usage) Cost(model string) float64 {
 // modelPricing returns (input, output) price per million tokens.
 func modelPricing(model string) (float64, float64) {
 	switch model {
-	case "claude-opus-4-7":
+	case "claude-opus-4-7", "claude-opus-4-8":
 		return 5.0, 25.0
 	case "claude-opus-4-6", "claude-opus-4-20250918":
 		return 5.0, 25.0
@@ -69,8 +81,18 @@ type Agent struct {
 	verbose      bool
 }
 
+// NewAnthropicClient builds an Anthropic client configured with the project's
+// retry policy. Shared so every entry point (the agent loop and the direct
+// YouTube/PDF handlers) gets the same transient-failure resilience.
+func NewAnthropicClient(apiKey string) anthropic.Client {
+	return anthropic.NewClient(
+		option.WithAPIKey(apiKey),
+		option.WithMaxRetries(maxRetries),
+	)
+}
+
 func New(cfg *config.Config, registry *tool.Registry) *Agent {
-	client := anthropic.NewClient(option.WithAPIKey(cfg.AnthropicAPIKey))
+	client := NewAnthropicClient(cfg.AnthropicAPIKey)
 	cleanupModel := cfg.CleanupModel
 	if cleanupModel == "" {
 		cleanupModel = cfg.Model
@@ -100,7 +122,11 @@ func (a *Agent) Archive(ctx context.Context, targetURL string) (*archive.Archive
 	}
 
 	if extractionResult.Confidence == "low" {
-		return nil, &usage, fmt.Errorf("extraction confidence too low — the agent could not reliably extract content from this URL")
+		return nil, &usage, fmt.Errorf("extraction confidence too low — the agent could not reliably extract content from this URL: %w", ErrIncomplete)
+	}
+
+	if !extractionResult.ContentComplete {
+		return nil, &usage, fmt.Errorf("extracted content is incomplete (paywall, login wall, or truncated body): %w", ErrIncomplete)
 	}
 
 	// Phase 2: Cleanup
@@ -137,6 +163,11 @@ type extractionResponse struct {
 	Markdown   string `json:"markdown" jsonschema_description:"The full article content as clean markdown"`
 	Summary    string `json:"summary" jsonschema_description:"A concise summary paragraph of 3-8 sentences capturing the key ideas of the content"`
 	Confidence string `json:"confidence" jsonschema:"enum=high,enum=medium,enum=low" jsonschema_description:"Your confidence that the full article was extracted correctly"`
+	// ContentComplete must be false whenever the full body could not be
+	// captured — paywalls, login/subscriber walls, metered previews, truncated
+	// teasers, or "continue reading" gates. When false the archive is rejected
+	// rather than storing a partial copy.
+	ContentComplete bool `json:"content_complete" jsonschema_description:"true ONLY if the COMPLETE article body was captured. false if the content is paywalled, login-gated, a subscriber-only preview, truncated, or otherwise partial — even if some text was extracted."`
 }
 
 // submitExtractionTool returns the tool definition for structured output.

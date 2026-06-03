@@ -11,6 +11,7 @@ import (
 func TestSlugFromURL(t *testing.T) {
 	t.Parallel()
 
+	// want is the readable base; SlugFromURL appends "-<8 hex hash of URL>".
 	tests := []struct {
 		give string
 		want string
@@ -29,10 +30,34 @@ func TestSlugFromURL(t *testing.T) {
 		t.Run(tt.give, func(t *testing.T) {
 			t.Parallel()
 
-			if got := SlugFromURL(tt.give); got != tt.want {
-				t.Errorf("SlugFromURL(%q) = %q, want %q", tt.give, got, tt.want)
+			want := tt.want + "-" + shortURLHash(tt.give)
+			if got := SlugFromURL(tt.give); got != want {
+				t.Errorf("SlugFromURL(%q) = %q, want %q", tt.give, got, want)
 			}
 		})
+	}
+}
+
+func TestSlugFromURLDeterministicAndUnique(t *testing.T) {
+	t.Parallel()
+
+	// Same URL is stable across calls (so repeat runs resolve to the same dir).
+	a := "https://example.com/posts/the-article"
+	first, second := SlugFromURL(a), SlugFromURL(a)
+	if first != second {
+		t.Errorf("SlugFromURL is not deterministic for %q: %q != %q", a, first, second)
+	}
+
+	// URLs that share a readable base but differ (query string, trailing path)
+	// must not collide onto the same slug.
+	cases := [][2]string{
+		{"https://example.com/p?id=1", "https://example.com/p?id=2"},
+		{"https://example.com/blog/", "https://example.com/docs/"},
+	}
+	for _, c := range cases {
+		if SlugFromURL(c[0]) == SlugFromURL(c[1]) {
+			t.Errorf("slug collision: %q and %q both produced %q", c[0], c[1], SlugFromURL(c[0]))
+		}
 	}
 }
 
