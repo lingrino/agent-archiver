@@ -47,7 +47,7 @@ func Load() (*Config, error) {
 		archiveDir = v
 	}
 
-	cleanupModel := "claude-opus-4-7"
+	cleanupModel := "claude-opus-4-8"
 	if v := os.Getenv("AA_CLEANUP_MODEL"); v != "" {
 		cleanupModel = v
 	}

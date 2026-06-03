@@ -1,6 +1,8 @@
 package archive
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
@@ -85,8 +87,16 @@ func (a *Archive) Write(baseDir string) error {
 
 var nonAlphanumeric = regexp.MustCompile(`[^a-z0-9]+`)
 
-// SlugFromURL generates a URL-safe slug from a URL path.
+// SlugFromURL generates a URL-safe slug from a URL, suffixed with a short hash
+// of the full URL. The hash guarantees that distinct URLs never collide onto
+// the same archive directory (different query strings, repeated trailing path
+// segments across a domain, etc.) while keeping the result deterministic so
+// repeat runs of the same URL resolve to the same directory.
 func SlugFromURL(rawURL string) string {
+	return slugBase(rawURL) + "-" + shortURLHash(rawURL)
+}
+
+func slugBase(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return "page"
@@ -116,6 +126,12 @@ func SlugFromURL(rawURL string) string {
 	}
 
 	return slug
+}
+
+// shortURLHash returns the first 8 hex characters of the SHA-256 of the URL.
+func shortURLHash(rawURL string) string {
+	sum := sha256.Sum256([]byte(rawURL))
+	return hex.EncodeToString(sum[:])[:8]
 }
 
 // DomainFromURL extracts the domain from a URL.

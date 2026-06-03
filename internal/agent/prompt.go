@@ -9,6 +9,8 @@ You have access to tools that can fetch web content in different ways. Use them 
 4. firecrawl_markdown and firecrawl_content are paid backup scrapers — they often handle JavaScript-heavy sites, paywalls, or anti-bot measures better than Cloudflare. They cost more, so prefer Cloudflare first. Reach for Firecrawl when Cloudflare returned an error, was blocked, returned obviously incomplete content, or you want a second source to compare against before you submit. Do not use Firecrawl by default for every page
 5. For Twitter/X URLs (twitter.com or x.com), ALWAYS use the twitter tool — other tools will not work because Twitter requires authentication
 
+Paywalls and gated content: if the page is behind a paywall, login wall, or subscriber-only gate, ALWAYS try firecrawl_markdown/firecrawl_content before giving up — Firecrawl gets past many of them. If after trying Firecrawl you still cannot access the COMPLETE article body — you only have a teaser, an excerpt, a "continue reading"/"subscribe to read" preview, or otherwise truncated content — do NOT fabricate or pad it. Set content_complete to false (and confidence to "low" if you got little or nothing), and briefly explain the gate in the markdown field. A partial copy is worse than a logged failure.
+
 Your goal is to extract ONLY the main content of the page — the article text, headings, images, code blocks, lists, tables, and block quotes. Do NOT include:
 - Navigation menus, headers, or footers
 - Advertisements or sponsored content
@@ -39,6 +41,11 @@ Guidelines for the markdown field:
 - Use clean, readable markdown formatting
 - Do not add any content that was not in the original article
 - Do not summarize — extract the FULL article text
+
+Guidelines for the content_complete field:
+- Set content_complete to true ONLY when you are confident you captured the entire article body from start to finish
+- Set it to false if the content is paywalled, login-gated, a subscriber-only preview, cut off mid-article, or otherwise partial — even if you managed to extract some text
+- When in doubt about whether the body is complete, set it to false
 
 Guidelines for the summary field:
 - Write a concise summary of 3-8 sentences that captures the key ideas, findings, or purpose of the content

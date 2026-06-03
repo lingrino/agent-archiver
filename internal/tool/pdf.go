@@ -3,6 +3,8 @@ package tool
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -332,9 +334,14 @@ func collectChunks(chunks []reductoChunk) (string, []PDFFigure, error) {
 }
 
 // PDFSlug returns a clean slug for a PDF URL based on the filename stem (the
-// last path segment with .pdf stripped). Falls back to "document" if the URL
-// has no usable filename.
+// last path segment with .pdf stripped), suffixed with a short hash of the full
+// URL to guarantee distinct URLs never collide. Falls back to "document" if the
+// URL has no usable filename.
 func PDFSlug(rawURL string) string {
+	return pdfSlugBase(rawURL) + "-" + shortURLHash(rawURL)
+}
+
+func pdfSlugBase(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return "document"
@@ -358,3 +365,9 @@ func PDFSlug(rawURL string) string {
 }
 
 var pdfSlugCleaner = regexp.MustCompile(`[^a-z0-9]+`)
+
+// shortURLHash returns the first 8 hex characters of the SHA-256 of the URL.
+func shortURLHash(rawURL string) string {
+	sum := sha256.Sum256([]byte(rawURL))
+	return hex.EncodeToString(sum[:])[:8]
+}
