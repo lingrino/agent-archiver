@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -18,6 +19,21 @@ import (
 	"github.com/lingrino/agent-archiver/internal/images"
 	"github.com/lingrino/agent-archiver/internal/tool"
 )
+
+// version is stamped by goreleaser at release time via -X main.version.
+var version = "dev"
+
+// versionString prefers the goreleaser-stamped version, falling back to the
+// module version embedded by the Go toolchain (e.g. for go install builds).
+func versionString() string {
+	if version != "dev" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return version
+}
 
 // Process exit codes. These are part of the CLI contract so callers (e.g. the
 // backfill script and the GitHub Action) can distinguish outcomes that should
@@ -44,26 +60,30 @@ func main() {
 }
 
 func run() int {
-	cfg, err := config.Load()
-	if err != nil {
-		log.Printf("config: %v", err)
-		return exitError
-	}
-
 	var (
 		archiveDir   string
 		model        string
 		cleanupModel string
 		verbose      bool
 		skipExisting bool
+		showVersion  bool
 	)
 
-	flag.StringVar(&archiveDir, "archive-dir", cfg.ArchiveDir, "output directory for archived content (env: AA_ARCHIVE_DIR)")
-	flag.StringVar(&model, "model", cfg.Model, "Claude model for the agent loop and per-archive summaries")
-	flag.StringVar(&cleanupModel, "cleanup-model", cfg.CleanupModel, "Claude model for the final cleanup pass (env: AA_CLEANUP_MODEL)")
+	// Flags are parsed before config loads so -version and -h work without
+	// the required environment variables. Empty string means "not set"; the
+	// real defaults come from config.Load.
+	flag.StringVar(&archiveDir, "archive-dir", "", "output directory for archived content (default ./archive, env: AA_ARCHIVE_DIR)")
+	flag.StringVar(&model, "model", "", "Claude model for the agent loop and per-archive summaries (default claude-sonnet-4-6)")
+	flag.StringVar(&cleanupModel, "cleanup-model", "", "Claude model for the final cleanup pass (default claude-opus-4-8, env: AA_CLEANUP_MODEL)")
 	flag.BoolVar(&verbose, "verbose", false, "enable verbose logging")
 	flag.BoolVar(&skipExisting, "skip-existing", false, "skip (exit 0) if this URL has already been archived instead of overwriting it")
+	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.Parse()
+
+	if showVersion {
+		fmt.Println(versionString())
+		return exitOK
+	}
 
 	if flag.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "Usage: agent-archiver [flags] <url>\n")
@@ -72,9 +92,21 @@ func run() int {
 	}
 	targetURL := flag.Arg(0)
 
-	cfg.ArchiveDir = archiveDir
-	cfg.Model = model
-	cfg.CleanupModel = cleanupModel
+	cfg, err := config.Load()
+	if err != nil {
+		log.Printf("config: %v", err)
+		return exitError
+	}
+
+	if archiveDir != "" {
+		cfg.ArchiveDir = archiveDir
+	}
+	if model != "" {
+		cfg.Model = model
+	}
+	if cleanupModel != "" {
+		cfg.CleanupModel = cleanupModel
+	}
 	cfg.Verbose = verbose
 
 	if !tool.YtDlpAvailable() {
