@@ -20,6 +20,11 @@ import (
 
 const maxIterations = 20
 
+// extractMaxTokens caps a single extraction response. The agent emits the full
+// article markdown in one submit_extraction tool call, so this must cover the
+// longest articles we archive. 64000 is Sonnet 4.6's output ceiling.
+const extractMaxTokens = 64000
+
 // maxRetries is how many times the Anthropic SDK retries transient failures
 // (429 rate limits, 5xx, connection errors) with exponential backoff before
 // giving up. The SDK default is 2, which is thin for large unattended batches.
@@ -201,19 +206,31 @@ func (a *Agent) extract(ctx context.Context, targetURL string, usage *Usage) (*e
 			log.Printf("  extraction loop iteration %d", i+1)
 		}
 
-		msg, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+		// Stream the response — the full article markdown is emitted in a single
+		// submit_extraction call, which can outlast the non-streaming time limit.
+		stream := a.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 			Model:     a.model,
-			MaxTokens: 16384,
+			MaxTokens: extractMaxTokens,
 			System: []anthropic.TextBlockParam{
 				{Text: extractionSystemPrompt},
 			},
 			Messages: messages,
 			Tools:    tools,
 		})
-		if err != nil {
+		var msg anthropic.Message
+		for stream.Next() {
+			if err := msg.Accumulate(stream.Current()); err != nil {
+				return nil, fmt.Errorf("accumulating extraction stream: %w", err)
+			}
+		}
+		if err := stream.Err(); err != nil {
 			return nil, fmt.Errorf("calling anthropic API: %w", err)
 		}
-		usage.add(msg)
+		usage.add(&msg)
+
+		if msg.StopReason == anthropic.StopReasonMaxTokens {
+			return nil, fmt.Errorf("extraction truncated by max_tokens (%d) — article too large to emit in one extraction", extractMaxTokens)
+		}
 
 		if msg.StopReason == anthropic.StopReasonEndTurn {
 			return nil, fmt.Errorf("agent ended without calling %s — no structured result returned", submitToolName)
@@ -396,9 +413,10 @@ func (a *Agent) Summarize(ctx context.Context, content string) (string, error) {
 }
 
 func (a *Agent) cleanup(ctx context.Context, markdown string, usage *Usage) (string, error) {
-	msg, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+	const cleanupMaxTokens = 65536
+	params := anthropic.MessageNewParams{
 		Model:     a.cleanupModel,
-		MaxTokens: 16384,
+		MaxTokens: cleanupMaxTokens,
 		Thinking: anthropic.ThinkingConfigParamUnion{
 			OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
 		},
@@ -411,13 +429,23 @@ func (a *Agent) cleanup(ctx context.Context, markdown string, usage *Usage) (str
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(markdown)),
 		},
-	})
-	if err != nil {
+	}
+
+	// Stream the response — required for max_tokens budgets that may take longer
+	// than the 10-minute non-streaming limit.
+	stream := a.client.Messages.NewStreaming(ctx, params)
+	var msg anthropic.Message
+	for stream.Next() {
+		if err := msg.Accumulate(stream.Current()); err != nil {
+			return "", fmt.Errorf("accumulating cleanup stream: %w", err)
+		}
+	}
+	if err := stream.Err(); err != nil {
 		return "", fmt.Errorf("calling cleanup: %w", err)
 	}
-	usage.add(msg)
+	usage.add(&msg)
 	if msg.StopReason == anthropic.StopReasonMaxTokens {
-		return "", fmt.Errorf("cleanup truncated by max_tokens (16384) before completion — output is incomplete; switch to streaming or shorten input")
+		return "", fmt.Errorf("cleanup truncated by max_tokens (%d) before completion — output is incomplete", cleanupMaxTokens)
 	}
 
 	for _, block := range msg.Content {
