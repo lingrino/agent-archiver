@@ -62,7 +62,7 @@ func Load() (*Config, error) {
 		XBearerToken:        required["AA_X_BEARER_TOKEN"],
 		ElevenLabsAPIKey:    required["AA_ELEVENLABS_API_KEY"],
 		ArchiveDir:          archiveDir,
-		Model:               "claude-sonnet-4-6",
+		Model:               "claude-sonnet-5",
 		CleanupModel:        cleanupModel,
 	}, nil
 }

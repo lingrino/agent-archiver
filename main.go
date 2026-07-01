@@ -73,7 +73,7 @@ func run() int {
 	// the required environment variables. Empty string means "not set"; the
 	// real defaults come from config.Load.
 	flag.StringVar(&archiveDir, "archive-dir", "", "output directory for archived content (default ./archive, env: AA_ARCHIVE_DIR)")
-	flag.StringVar(&model, "model", "", "Claude model for the agent loop and per-archive summaries (default claude-sonnet-4-6)")
+	flag.StringVar(&model, "model", "", "Claude model for the agent loop and per-archive summaries (default claude-sonnet-5)")
 	flag.StringVar(&cleanupModel, "cleanup-model", "", "Claude model for the final cleanup pass (default claude-opus-4-8, env: AA_CLEANUP_MODEL)")
 	flag.BoolVar(&verbose, "verbose", false, "enable verbose logging")
 	flag.BoolVar(&skipExisting, "skip-existing", false, "skip (exit 0) if this URL has already been archived instead of overwriting it")

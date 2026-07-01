@@ -473,7 +473,12 @@ func (yt *YouTube) callSpeakerIDLLM(ctx context.Context, prompt string, speakerI
 
 	msg, err := yt.anthClient.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     yt.model,
-		MaxTokens: 1024,
+		MaxTokens: 8192,
+		// Adaptive thinking improves speaker matching. The budget is raised so
+		// thinking has room alongside the forced tool call.
+		Thinking: anthropic.ThinkingConfigParamUnion{
+			OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+		},
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
 		},
