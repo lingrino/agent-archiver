@@ -451,7 +451,7 @@ func buildSpeakerIDPrompt(meta *videoMetadata, samples map[string]string, search
 }
 
 type speakerIdentificationResult struct {
-	Speakers []identifiedSpeaker `json:"speakers" jsonschema_description:"Mapping of speaker IDs to identified names"`
+	Speakers []identifiedSpeaker `json:"speakers" jsonschema_description:"Array of speakers, each mapping one transcript speaker ID to an identified name"`
 }
 
 type identifiedSpeaker struct {
@@ -462,18 +462,32 @@ type identifiedSpeaker struct {
 const submitSpeakerIDToolName = "submit_speaker_identification"
 
 func (yt *YouTube) callSpeakerIDLLM(ctx context.Context, prompt string, speakerIDs []string) (speakerMap, error) {
+	// Strict tool use forces the model's tool input to match the schema exactly.
+	// Without it Sonnet 5 can return `speakers` as a string instead of an array,
+	// which then fails to unmarshal. Strict requires additionalProperties:false on
+	// the top-level object schema, which GenerateSchema omits.
 	schema := GenerateSchema[speakerIdentificationResult]()
+	schema.ExtraFields = map[string]any{"additionalProperties": false}
 	tool := anthropic.ToolUnionParam{
 		OfTool: &anthropic.ToolParam{
 			Name:        submitSpeakerIDToolName,
 			Description: anthropic.String("Submit the identified speaker names."),
 			InputSchema: schema,
+			Strict:      anthropic.Bool(true),
 		},
 	}
 
 	msg, err := yt.anthClient.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     yt.model,
-		MaxTokens: 1024,
+		MaxTokens: 8192,
+		// Adaptive thinking improves speaker matching. The budget is raised so
+		// thinking has room alongside the forced tool call.
+		Thinking: anthropic.ThinkingConfigParamUnion{
+			OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+		},
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortMedium,
+		},
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
 		},

@@ -21,9 +21,10 @@ import (
 const maxIterations = 20
 
 // extractMaxTokens caps a single extraction response. The agent emits the full
-// article markdown in one submit_extraction tool call, so this must cover the
-// longest articles we archive. 64000 is Sonnet 4.6's output ceiling.
-const extractMaxTokens = 64000
+// article markdown in one submit_extraction tool call, so this is set to the
+// model's full 128K output ceiling to cover the longest articles. The call
+// streams, so this large value doesn't risk an SDK HTTP timeout.
+const extractMaxTokens = 128000
 
 // maxRetries is how many times the Anthropic SDK retries transient failures
 // (429 rate limits, 5xx, connection errors) with exponential backoff before
@@ -69,7 +70,7 @@ func modelPricing(model string) (float64, float64) {
 		return 5.0, 25.0
 	case "claude-opus-4-6", "claude-opus-4-20250918":
 		return 5.0, 25.0
-	case "claude-sonnet-4-6", "claude-sonnet-4-20250514":
+	case "claude-sonnet-5", "claude-sonnet-4-6", "claude-sonnet-4-20250514":
 		return 3.0, 15.0
 	case "claude-haiku-4-5-20251001":
 		return 0.80, 4.0
@@ -211,6 +212,15 @@ func (a *Agent) extract(ctx context.Context, targetURL string, usage *Usage) (*e
 		stream := a.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 			Model:     a.model,
 			MaxTokens: extractMaxTokens,
+			// Adaptive thinking improves tool-use extraction quality. It shares the
+			// extractMaxTokens budget, so a very long article can hit the max_tokens
+			// guard below — which surfaces as a clear error, not silent truncation.
+			Thinking: anthropic.ThinkingConfigParamUnion{
+				OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+			},
+			OutputConfig: anthropic.OutputConfigParam{
+				Effort: anthropic.OutputConfigEffortMedium,
+			},
 			System: []anthropic.TextBlockParam{
 				{Text: extractionSystemPrompt},
 			},
@@ -331,7 +341,7 @@ func (a *Agent) CleanupPDF(ctx context.Context, markdown string, figures []tool.
 	pdfBlock := anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{Data: pdfData})
 	textBlock := anthropic.NewTextBlock(userText.String())
 
-	const cleanupMaxTokens = 65536
+	const cleanupMaxTokens = 128000
 	params := anthropic.MessageNewParams{
 		Model:     a.cleanupModel,
 		MaxTokens: cleanupMaxTokens,
@@ -391,7 +401,15 @@ func (a *Agent) CleanupPDF(ctx context.Context, markdown string, figures []tool.
 func (a *Agent) Summarize(ctx context.Context, content string) (string, error) {
 	msg, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     a.model,
-		MaxTokens: 1024,
+		MaxTokens: 8192,
+		// Adaptive thinking sharpens the summary. The budget is raised well above
+		// the short summary output so thinking has room without truncating it.
+		Thinking: anthropic.ThinkingConfigParamUnion{
+			OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+		},
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortMedium,
+		},
 		System: []anthropic.TextBlockParam{
 			{Text: summarizeSystemPrompt},
 		},
@@ -413,7 +431,7 @@ func (a *Agent) Summarize(ctx context.Context, content string) (string, error) {
 }
 
 func (a *Agent) cleanup(ctx context.Context, markdown string, usage *Usage) (string, error) {
-	const cleanupMaxTokens = 65536
+	const cleanupMaxTokens = 128000
 	params := anthropic.MessageNewParams{
 		Model:     a.cleanupModel,
 		MaxTokens: cleanupMaxTokens,
