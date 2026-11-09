@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.84.0
+	github.com/anthropics/anthropic-sdk-go/v2 v2.8.0
 	github.com/invopop/jsonschema v0.14.0
 	gopkg.in/yaml.v3 v3.0.1
 )
