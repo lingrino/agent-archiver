@@ -18,7 +18,7 @@ jobs:
       - name: go mod tidy
         run: go mod tidy && git diff --exit-code go.mod go.sum
       - name: goreleaser check
-        uses: goreleaser/goreleaser-action@v7.0.0
+        uses: goreleaser/goreleaser-action@v7.3.0
         with:
           args: check
       - name: lint
