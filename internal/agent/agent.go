@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/anthropics/anthropic-sdk-go/v2"
+	"github.com/anthropics/anthropic-sdk-go/v2/option"
 	"github.com/lingrino/agent-archiver/internal/archive"
 	"github.com/lingrino/agent-archiver/internal/config"
 	"github.com/lingrino/agent-archiver/internal/tool"
