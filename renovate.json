@@ -8,7 +8,8 @@
         "before 8am on monday"
     ],
     "postUpdateOptions": [
-        "gomodTidy"
+        "gomodTidy",
+        "gomodUpdateImportPaths"
     ],
     "prHourlyLimit": 0,
     "prConcurrentLimit": 100,
