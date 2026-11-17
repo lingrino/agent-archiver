@@ -8,11 +8,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/anthropics/anthropic-sdk-go/v2"
+	"github.com/anthropics/anthropic-sdk-go/v2/option"
 	"github.com/lingrino/agent-archiver/internal/archive"
 	"github.com/lingrino/agent-archiver/internal/config"
 	"github.com/lingrino/agent-archiver/internal/tool"
@@ -39,44 +40,61 @@ const submitToolName = "submit_extraction"
 // than archiving a partial/teaser copy or retrying.
 var ErrIncomplete = errors.New("content incomplete or paywalled")
 
-// Usage tracks cumulative token usage across all API calls.
+// Usage tracks cumulative token usage and estimated cost across all API calls.
+// Each call is priced by the model that served it, since one archive can mix
+// models (e.g. the agent loop on Sonnet and the cleanup pass on Opus).
 type Usage struct {
 	InputTokens              int64
 	OutputTokens             int64
 	CacheCreationInputTokens int64
 	CacheReadInputTokens     int64
+
+	cost     float64
+	unpriced []string // models with no modelPrices entry, in first-seen order
 }
 
-func (u *Usage) add(msg *anthropic.Message) {
+func (u *Usage) add(model anthropic.Model, msg *anthropic.Message) {
 	u.InputTokens += msg.Usage.InputTokens
 	u.OutputTokens += msg.Usage.OutputTokens
 	u.CacheCreationInputTokens += msg.Usage.CacheCreationInputTokens
 	u.CacheReadInputTokens += msg.Usage.CacheReadInputTokens
-}
 
-// Cost returns the estimated cost in USD based on model pricing.
-func (u *Usage) Cost(model string) float64 {
-	inputPrice, outputPrice := modelPricing(model)
-	return float64(u.InputTokens)*inputPrice/1_000_000 +
-		float64(u.OutputTokens)*outputPrice/1_000_000 +
-		float64(u.CacheCreationInputTokens)*inputPrice*1.25/1_000_000 +
-		float64(u.CacheReadInputTokens)*inputPrice*0.1/1_000_000
-}
-
-// modelPricing returns (input, output) price per million tokens.
-func modelPricing(model string) (float64, float64) {
-	switch model {
-	case "claude-opus-4-7", "claude-opus-4-8":
-		return 5.0, 25.0
-	case "claude-opus-4-6", "claude-opus-4-20250918":
-		return 5.0, 25.0
-	case "claude-sonnet-5", "claude-sonnet-4-6", "claude-sonnet-4-20250514":
-		return 3.0, 15.0
-	case "claude-haiku-4-5-20251001":
-		return 0.80, 4.0
-	default:
-		return 3.0, 15.0 // default to sonnet pricing
+	p, ok := modelPrices[string(model)]
+	if !ok {
+		if !slices.Contains(u.unpriced, string(model)) {
+			u.unpriced = append(u.unpriced, string(model))
+		}
+		return
 	}
+	u.cost += (float64(msg.Usage.InputTokens)*p.input +
+		float64(msg.Usage.OutputTokens)*p.output +
+		float64(msg.Usage.CacheCreationInputTokens)*p.cacheWrite +
+		float64(msg.Usage.CacheReadInputTokens)*p.cacheRead) / 1_000_000
+}
+
+// Cost returns the estimated cost in USD of every call made with a known
+// model, and the models it could not price (whose calls the total excludes).
+func (u *Usage) Cost() (usd float64, unpriced []string) {
+	return u.cost, u.unpriced
+}
+
+// modelPrice is USD per million tokens. cacheWrite is the 5-minute cache write
+// price (the API's default TTL); cacheRead is the cache hit price.
+type modelPrice struct {
+	input, output, cacheWrite, cacheRead float64
+}
+
+// modelPrices lists standard Claude API pricing from
+// https://platform.claude.com/docs/en/about-claude/pricing.
+var modelPrices = map[string]modelPrice{
+	"claude-opus-4-8":           {input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.50},
+	"claude-opus-4-7":           {input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.50},
+	"claude-opus-4-6":           {input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.50},
+	"claude-sonnet-5":           {input: 2, output: 10, cacheWrite: 2.50, cacheRead: 0.20},
+	"claude-sonnet-4-6":         {input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.30},
+	"claude-sonnet-4-20250514":  {input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.30},
+	"claude-haiku-4-5":          {input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.10},
+	"claude-haiku-4-5-20251001": {input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.10},
 }
 
 type Agent struct {
@@ -202,7 +220,7 @@ func (a *Agent) extract(ctx context.Context, targetURL string, usage *Usage) (*e
 		anthropic.NewUserMessage(anthropic.NewTextBlock(userMessage)),
 	}
 
-	for i := 0; i < maxIterations; i++ {
+	for i := range maxIterations {
 		if a.verbose {
 			log.Printf("  extraction loop iteration %d", i+1)
 		}
@@ -236,7 +254,7 @@ func (a *Agent) extract(ctx context.Context, targetURL string, usage *Usage) (*e
 		if err := stream.Err(); err != nil {
 			return nil, fmt.Errorf("calling anthropic API: %w", err)
 		}
-		usage.add(&msg)
+		usage.add(a.model, &msg)
 
 		if msg.StopReason == anthropic.StopReasonMaxTokens {
 			return nil, fmt.Errorf("extraction truncated by max_tokens (%d) — article too large to emit in one extraction", extractMaxTokens)
@@ -375,7 +393,7 @@ func (a *Agent) CleanupPDF(ctx context.Context, markdown string, figures []tool.
 	if err := stream.Err(); err != nil {
 		return nil, &usage, fmt.Errorf("streaming PDF cleanup: %w", err)
 	}
-	usage.add(&msg)
+	usage.add(a.cleanupModel, &msg)
 	if msg.StopReason == anthropic.StopReasonMaxTokens {
 		return nil, &usage, fmt.Errorf("PDF cleanup truncated by max_tokens (%d) before completion — output is incomplete; raise the budget or split the document", cleanupMaxTokens)
 	}
@@ -461,7 +479,7 @@ func (a *Agent) cleanup(ctx context.Context, markdown string, usage *Usage) (str
 	if err := stream.Err(); err != nil {
 		return "", fmt.Errorf("calling cleanup: %w", err)
 	}
-	usage.add(&msg)
+	usage.add(a.cleanupModel, &msg)
 	if msg.StopReason == anthropic.StopReasonMaxTokens {
 		return "", fmt.Errorf("cleanup truncated by max_tokens (%d) before completion — output is incomplete", cleanupMaxTokens)
 	}

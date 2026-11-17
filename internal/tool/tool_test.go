@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 )
 
 type mockTool struct {
@@ -18,7 +18,7 @@ func (m *mockTool) Name() string        { return m.name }
 func (m *mockTool) Description() string { return "mock tool" }
 func (m *mockTool) InputSchema() anthropic.ToolInputSchemaParam {
 	return anthropic.ToolInputSchemaParam{
-		Properties: map[string]interface{}{},
+		Properties: map[string]any{},
 	}
 }
 func (m *mockTool) Execute(_ context.Context, _ json.RawMessage) (string, error) {

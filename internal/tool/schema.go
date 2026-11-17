@@ -1,7 +1,7 @@
 package tool
 
 import (
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/invopop/jsonschema"
 )
 
@@ -14,7 +14,7 @@ func GenerateSchema[T any]() anthropic.ToolInputSchemaParam {
 	var v T
 	schema := reflector.Reflect(v)
 
-	properties := make(map[string]interface{})
+	properties := make(map[string]any)
 	if schema.Properties != nil {
 		for pair := schema.Properties.Oldest(); pair != nil; pair = pair.Next() {
 			properties[pair.Key] = pair.Value

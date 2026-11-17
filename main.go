@@ -10,9 +10,10 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/lingrino/agent-archiver/internal/agent"
 	"github.com/lingrino/agent-archiver/internal/archive"
 	"github.com/lingrino/agent-archiver/internal/config"
@@ -296,7 +297,7 @@ func archivePDF(ctx context.Context, cfg *config.Config, a *agent.Agent, targetU
 	}
 
 	if cfg.Verbose {
-		logUsage(usage, cfg.CleanupModel)
+		logUsage(usage)
 	}
 
 	return &archive.Archive{
@@ -367,18 +368,23 @@ func archiveWeb(ctx context.Context, cfg *config.Config, a *agent.Agent, targetU
 	}
 
 	if cfg.Verbose {
-		logUsage(usage, cfg.Model)
+		logUsage(usage)
 	}
 
 	return result, exitOK
 }
 
-func logUsage(usage *agent.Usage, model string) {
+func logUsage(usage *agent.Usage) {
 	log.Printf("tokens: %d input, %d output", usage.InputTokens, usage.OutputTokens)
 	if usage.CacheReadInputTokens > 0 || usage.CacheCreationInputTokens > 0 {
 		log.Printf("cache: %d read, %d creation", usage.CacheReadInputTokens, usage.CacheCreationInputTokens)
 	}
-	log.Printf("estimated cost: $%.4f", usage.Cost(model))
+	cost, unpriced := usage.Cost()
+	if len(unpriced) > 0 {
+		log.Printf("estimated cost: $%.4f (excludes calls to %s, which have no pricing entry)", cost, strings.Join(unpriced, ", "))
+		return
+	}
+	log.Printf("estimated cost: $%.4f", cost)
 }
 
 func buildRegistry(cfg *config.Config) *tool.Registry {
