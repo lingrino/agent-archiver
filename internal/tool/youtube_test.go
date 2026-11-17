@@ -11,6 +11,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/anthropics/anthropic-sdk-go/v2"
+	"github.com/anthropics/anthropic-sdk-go/v2/option"
 )
 
 func TestIsYouTubeURL(t *testing.T) {
@@ -520,4 +523,133 @@ func TestBuildSpeakerIDPrompt(t *testing.T) {
 
 func writeTestFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func TestCallSpeakerIDLLM(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		response string
+		want     speakerMap
+		wantErr  string
+	}{
+		{
+			name: "structured output maps speakers and fills missing ids",
+			response: `{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-5-5",
+				"content":[{"type":"thinking","thinking":"","signature":"sig"},
+					{"type":"text","text":"{\"speakers\":[{\"speaker_id\":\"speaker_0\",\"name\":\"Jane Host\"}]}"}],
+				"stop_reason":"end_turn","stop_details":null,"usage":{"input_tokens":10,"output_tokens":5}}`,
+			want: speakerMap{"speaker_0": "Jane Host", "speaker_1": "Speaker 2"},
+		},
+		{
+			name: "refusal is an error, not an empty mapping",
+			response: `{"id":"msg_2","type":"message","role":"assistant","model":"claude-sonnet-5-5",
+				"content":[],"stop_reason":"refusal",
+				"stop_details":{"type":"refusal","category":"general_harms","explanation":"declined"},
+				"usage":{"input_tokens":10,"output_tokens":0}}`,
+			wantErr: "declined",
+		},
+		{
+			name: "no JSON text block is an error",
+			response: `{"id":"msg_3","type":"message","role":"assistant","model":"claude-sonnet-5-5",
+				"content":[{"type":"thinking","thinking":"","signature":"sig"}],
+				"stop_reason":"end_turn","stop_details":null,"usage":{"input_tokens":10,"output_tokens":5}}`,
+			wantErr: "did not return",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var body map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Errorf("decoding request body: %v", err)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, tt.response)
+			}))
+			defer server.Close()
+
+			client := anthropic.NewClient(
+				option.WithBaseURL(server.URL),
+				option.WithAPIKey("test-key"),
+				option.WithMaxRetries(0),
+			)
+			yt := NewYouTube("", "", &client, "claude-sonnet-5-5")
+
+			got, err := yt.callSpeakerIDLLM(context.Background(), "prompt", []string{"speaker_0", "speaker_1"})
+
+			// Sonnet 5.5 and Opus 5.5 return a 400 for forced tool_choice, so the
+			// request must use structured outputs instead.
+			if _, ok := body["tool_choice"]; ok {
+				t.Errorf("request sets tool_choice: %v", body["tool_choice"])
+			}
+			outputConfig, _ := body["output_config"].(map[string]any)
+			format, _ := outputConfig["format"].(map[string]any)
+			if format["type"] != "json_schema" {
+				t.Errorf("output_config.format.type: got %v, want json_schema", format["type"])
+			}
+
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error: got %v, want it to contain %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for id, name := range tt.want {
+				if got[id] != name {
+					t.Errorf("%s: got %q, want %q", id, got[id], name)
+				}
+			}
+		})
+	}
+}
+
+func TestSpeakerIDSchemaIsStrict(t *testing.T) {
+	t.Parallel()
+
+	// Structured outputs require additionalProperties:false on every object,
+	// including the nested speaker items.
+	schema := GenerateJSONSchema[speakerIdentificationResult]()
+	if schema["additionalProperties"] != false {
+		t.Errorf("top-level additionalProperties: got %v, want false", schema["additionalProperties"])
+	}
+
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		t.Fatalf("marshaling schema: %v", err)
+	}
+	var decoded struct {
+		Properties struct {
+			Speakers struct {
+				Type  string `json:"type"`
+				Items struct {
+					AdditionalProperties *bool    `json:"additionalProperties"`
+					Required             []string `json:"required"`
+				} `json:"items"`
+			} `json:"speakers"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("decoding schema: %v", err)
+	}
+	speakers := decoded.Properties.Speakers
+	if speakers.Type != "array" {
+		t.Errorf("speakers type: got %q, want array", speakers.Type)
+	}
+	if speakers.Items.AdditionalProperties == nil || *speakers.Items.AdditionalProperties {
+		t.Errorf("speaker items additionalProperties: got %v, want false", speakers.Items.AdditionalProperties)
+	}
+	if strings.Join(speakers.Items.Required, ",") != "speaker_id,name" {
+		t.Errorf("speaker items required: got %v, want [speaker_id name]", speakers.Items.Required)
+	}
 }

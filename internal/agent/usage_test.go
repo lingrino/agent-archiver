@@ -55,3 +55,20 @@ func TestUsageCostReportsUnpricedModels(t *testing.T) {
 		t.Errorf("InputTokens = %d, want unpriced calls still counted", u.InputTokens)
 	}
 }
+
+func TestUsageCostCurrentDefaults(t *testing.T) {
+	var u Usage
+	// Agent loop on Sonnet 5.5: $2 in / $10 out / $0.10 cache read per MTok.
+	u.add("claude-sonnet-5-5", message(1_000_000, 100_000, 0, 1_000_000))
+	// Cleanup on Opus 5.5: $4 in / $20 out / $5 cache write per MTok.
+	u.add("claude-opus-5-5", message(200_000, 50_000, 20_000, 0))
+
+	cost, unpriced := u.Cost()
+	want := (2.0 + 1.0 + 0.10) + (0.8 + 1.0 + 0.1)
+	if math.Abs(cost-want) > 1e-9 {
+		t.Errorf("cost = %.6f, want %.6f", cost, want)
+	}
+	if len(unpriced) != 0 {
+		t.Errorf("unpriced = %v, want none", unpriced)
+	}
+}

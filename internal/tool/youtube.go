@@ -459,51 +459,48 @@ type identifiedSpeaker struct {
 	Name      string `json:"name" jsonschema_description:"The identified real name, or a descriptive label like Host or Guest"`
 }
 
-const submitSpeakerIDToolName = "submit_speaker_identification"
+const speakerIDMaxTokens = 8192
 
 func (yt *YouTube) callSpeakerIDLLM(ctx context.Context, prompt string, speakerIDs []string) (speakerMap, error) {
-	// Strict tool use forces the model's tool input to match the schema exactly.
-	// Without it Sonnet 5 can return `speakers` as a string instead of an array,
-	// which then fails to unmarshal. Strict requires additionalProperties:false on
-	// the top-level object schema, which GenerateSchema omits.
-	schema := GenerateSchema[speakerIdentificationResult]()
-	schema.ExtraFields = map[string]any{"additionalProperties": false}
-	tool := anthropic.ToolUnionParam{
-		OfTool: &anthropic.ToolParam{
-			Name:        submitSpeakerIDToolName,
-			Description: anthropic.String("Submit the identified speaker names."),
-			InputSchema: schema,
-			Strict:      anthropic.Bool(true),
-		},
-	}
-
+	// Structured outputs constrain the reply to the schema, so `speakers` always
+	// comes back as an array (unconstrained, Sonnet 5 sometimes returned it as a
+	// string). This replaces a forced submit tool call: Sonnet 5.5 and Opus 5.5
+	// reject forced tool_choice with a 400.
 	msg, err := yt.anthClient.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     yt.model,
-		MaxTokens: 8192,
+		MaxTokens: speakerIDMaxTokens,
 		// Adaptive thinking improves speaker matching. The budget is raised so
-		// thinking has room alongside the forced tool call.
+		// thinking has room alongside the JSON reply.
 		Thinking: anthropic.ThinkingConfigParamUnion{
 			OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
 		},
 		OutputConfig: anthropic.OutputConfigParam{
 			Effort: anthropic.OutputConfigEffortMedium,
+			Format: anthropic.JSONOutputFormatParam{
+				Schema: GenerateJSONSchema[speakerIdentificationResult](),
+			},
 		},
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
 		},
-		Tools:      []anthropic.ToolUnionParam{tool},
-		ToolChoice: anthropic.ToolChoiceUnionParam{OfTool: &anthropic.ToolChoiceToolParam{Name: submitSpeakerIDToolName}},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("calling LLM for speaker identification: %w", err)
 	}
 
+	switch msg.StopReason {
+	case anthropic.StopReasonRefusal:
+		return nil, fmt.Errorf("model declined speaker identification (refusal category %q)", msg.StopDetails.Category)
+	case anthropic.StopReasonMaxTokens:
+		return nil, fmt.Errorf("speaker identification truncated by max_tokens (%d)", speakerIDMaxTokens)
+	}
+
 	for _, block := range msg.Content {
-		if block.Type != "tool_use" || block.Name != submitSpeakerIDToolName {
+		if block.Type != "text" {
 			continue
 		}
 		var result speakerIdentificationResult
-		if err := json.Unmarshal(block.Input, &result); err != nil {
+		if err := json.Unmarshal([]byte(block.Text), &result); err != nil {
 			return nil, fmt.Errorf("parsing speaker identification result: %w", err)
 		}
 

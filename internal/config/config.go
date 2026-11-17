@@ -47,7 +47,7 @@ func Load() (*Config, error) {
 		archiveDir = v
 	}
 
-	cleanupModel := "claude-opus-4-8"
+	cleanupModel := "claude-opus-5-5"
 	if v := os.Getenv("AA_CLEANUP_MODEL"); v != "" {
 		cleanupModel = v
 	}
@@ -62,7 +62,7 @@ func Load() (*Config, error) {
 		XBearerToken:        required["AA_X_BEARER_TOKEN"],
 		ElevenLabsAPIKey:    required["AA_ELEVENLABS_API_KEY"],
 		ArchiveDir:          archiveDir,
-		Model:               "claude-sonnet-5",
+		Model:               "claude-sonnet-5-5",
 		CleanupModel:        cleanupModel,
 	}, nil
 }
