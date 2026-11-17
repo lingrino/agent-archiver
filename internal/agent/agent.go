@@ -202,7 +202,7 @@ func (a *Agent) extract(ctx context.Context, targetURL string, usage *Usage) (*e
 		anthropic.NewUserMessage(anthropic.NewTextBlock(userMessage)),
 	}
 
-	for i := 0; i < maxIterations; i++ {
+	for i := range maxIterations {
 		if a.verbose {
 			log.Printf("  extraction loop iteration %d", i+1)
 		}
