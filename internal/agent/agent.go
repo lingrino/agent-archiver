@@ -40,6 +40,24 @@ const submitToolName = "submit_extraction"
 // than archiving a partial/teaser copy or retrying.
 var ErrIncomplete = errors.New("content incomplete or paywalled")
 
+// ErrRefused signals that the model declined the request (stop_reason
+// "refusal"), either a safety classifier or the model itself. The response may
+// hold partial output, which must never be used as if it were complete.
+var ErrRefused = errors.New("model declined the request")
+
+// checkRefusal returns an error wrapping ErrRefused if msg was a refusal, and
+// nil otherwise. Call it before reading msg.Content.
+func checkRefusal(msg *anthropic.Message) error {
+	if msg.StopReason != anthropic.StopReasonRefusal {
+		return nil
+	}
+	category := string(msg.StopDetails.Category)
+	if category == "" {
+		category = "unspecified"
+	}
+	return fmt.Errorf("%w (model %s, refusal category %s)", ErrRefused, msg.Model, category)
+}
+
 // Usage tracks cumulative token usage and estimated cost across all API calls.
 // Each call is priced by the model that served it, since one archive can mix
 // models (e.g. the agent loop on Sonnet and the cleanup pass on Opus).
@@ -87,9 +105,11 @@ type modelPrice struct {
 // modelPrices lists standard Claude API pricing from
 // https://platform.claude.com/docs/en/about-claude/pricing.
 var modelPrices = map[string]modelPrice{
+	"claude-opus-5-5":           {input: 4, output: 20, cacheWrite: 5, cacheRead: 0.20},
 	"claude-opus-4-8":           {input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.50},
 	"claude-opus-4-7":           {input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.50},
 	"claude-opus-4-6":           {input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.50},
+	"claude-sonnet-5-5":         {input: 2, output: 10, cacheWrite: 2.50, cacheRead: 0.10},
 	"claude-sonnet-5":           {input: 2, output: 10, cacheWrite: 2.50, cacheRead: 0.20},
 	"claude-sonnet-4-6":         {input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.30},
 	"claude-sonnet-4-20250514":  {input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.30},
@@ -256,6 +276,10 @@ func (a *Agent) extract(ctx context.Context, targetURL string, usage *Usage) (*e
 		}
 		usage.add(a.model, &msg)
 
+		if err := checkRefusal(&msg); err != nil {
+			return nil, err
+		}
+
 		if msg.StopReason == anthropic.StopReasonMaxTokens {
 			return nil, fmt.Errorf("extraction truncated by max_tokens (%d) — article too large to emit in one extraction", extractMaxTokens)
 		}
@@ -394,6 +418,9 @@ func (a *Agent) CleanupPDF(ctx context.Context, markdown string, figures []tool.
 		return nil, &usage, fmt.Errorf("streaming PDF cleanup: %w", err)
 	}
 	usage.add(a.cleanupModel, &msg)
+	if err := checkRefusal(&msg); err != nil {
+		return nil, &usage, err
+	}
 	if msg.StopReason == anthropic.StopReasonMaxTokens {
 		return nil, &usage, fmt.Errorf("PDF cleanup truncated by max_tokens (%d) before completion — output is incomplete; raise the budget or split the document", cleanupMaxTokens)
 	}
@@ -438,6 +465,9 @@ func (a *Agent) Summarize(ctx context.Context, content string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("calling summarize: %w", err)
 	}
+	if err := checkRefusal(msg); err != nil {
+		return "", err
+	}
 
 	for _, block := range msg.Content {
 		if block.Type == "text" {
@@ -480,6 +510,9 @@ func (a *Agent) cleanup(ctx context.Context, markdown string, usage *Usage) (str
 		return "", fmt.Errorf("calling cleanup: %w", err)
 	}
 	usage.add(a.cleanupModel, &msg)
+	if err := checkRefusal(&msg); err != nil {
+		return "", err
+	}
 	if msg.StopReason == anthropic.StopReasonMaxTokens {
 		return "", fmt.Errorf("cleanup truncated by max_tokens (%d) before completion — output is incomplete", cleanupMaxTokens)
 	}
